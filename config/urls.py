@@ -10,6 +10,7 @@ import re
 
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.staticfiles.views import serve as staticfiles_serve
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import render
 from django.urls import include, path, re_path
@@ -50,15 +51,18 @@ urlpatterns = [
 ]
 
 # 开发环境由 Django 提供静态与媒体文件（dev 配置 DEBUG=False 用于预览错误页，
-# 故额外按 settings 模块判断）；静态文件直接取源码目录，无需 collectstatic。
-# 注意：不能用 django.conf.urls.static.static()，其内部以 settings.DEBUG 为开关，
-# DEBUG=False 时返回空列表；此处直接用 serve 视图显式挂载。生产环境由 Nginx 提供。
+# 故额外按 settings 模块判断）。生产环境由 Nginx 提供。
+# - 静态：必须走 django.contrib.staticfiles.views.serve（基于 finders），
+#   才能同时命中项目 static/ 与 Django admin 等第三方 app 位于 site-packages 的
+#   静态资源；若用 django.views.static.serve(仅 STATICFILES_DIRS[0]) 会导致
+#   admin 的 CSS/JS 404、后台退化为无样式裸页。insecure=True 以便 DEBUG=False 时仍可取。
+# - 媒体：用户上传文件不在 staticfiles 索引内，仍用 django.views.static.serve 指向 MEDIA_ROOT。
 if settings.DEBUG or settings.SETTINGS_MODULE == "config.settings.dev":
     urlpatterns += [
         re_path(
             rf"^{re.escape(settings.STATIC_URL.lstrip('/'))}(?P<path>.*)$",
-            serve,
-            {"document_root": settings.STATICFILES_DIRS[0]},
+            staticfiles_serve,
+            {"insecure": True},
         ),
         re_path(
             rf"^{re.escape(settings.MEDIA_URL.lstrip('/'))}(?P<path>.*)$",

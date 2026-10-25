@@ -12,6 +12,8 @@ from django.http import FileResponse, Http404, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
+from apps.audit.decorators import log_operation
+from apps.audit.models import OperationAction
 from utils.pagination import paginate_from_request
 
 from .forms import FileUploadForm
@@ -37,6 +39,7 @@ def list_view(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@log_operation(OperationAction.FILE_UPLOAD, module="files")
 def upload_view(request: HttpRequest) -> HttpResponse:
     """处理上传（仅 POST），成功后回到列表页。"""
     if request.method != "POST":
@@ -47,8 +50,10 @@ def upload_view(request: HttpRequest) -> HttpResponse:
         messages.error(request, _first_error(form))
         return redirect(reverse("files:list"))
 
+    uploaded = form.cleaned_data["file"]
+    request.audit_detail = getattr(uploaded, "name", "")
     save_upload(
-        form.cleaned_data["file"],
+        uploaded,
         user=request.user,
         category=form.cleaned_data["category"],
     )
@@ -75,6 +80,7 @@ def download_view(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@log_operation(OperationAction.FILE_DELETE, module="files")
 def delete_view(request: HttpRequest, pk: int) -> HttpResponse:
     """删除文件（仅 POST）：普通用户删自己的，管理员可删任意。"""
     if request.method != "POST":
@@ -84,6 +90,7 @@ def delete_view(request: HttpRequest, pk: int) -> HttpResponse:
     if entry is None:
         raise Http404("文件不存在或无权访问")
 
+    request.audit_detail = entry.original_name
     delete_file(entry)
     messages.success(request, "文件已删除")
     return redirect(reverse("files:list"))

@@ -18,12 +18,11 @@
             </a>
         </div>
 
-        {# ---------- 中：模块导航 ---------- #}
+        {# ---------- 中：模块导航（后台管理入口仅管理员在右上角下拉框内可见） ---------- #}
         <nav class="hidden items-center gap-1 md:flex">
             <a href="{% url 'home' %}" class="btn btn-ghost btn-sm {% if request.path == '/' %}btn-active{% endif %}">首页</a>
             {% if user.is_authenticated %}
                 <a href="{% url 'files:list' %}" class="btn btn-ghost btn-sm {% if request.path == '/files/' %}btn-active{% endif %}">文件管理</a>
-                <a href="{% url 'admin:index' %}" class="btn btn-ghost btn-sm">后台管理</a>
             {% endif %}
         </nav>
 
@@ -55,6 +54,10 @@
                                 <span class="badge badge-ghost badge-xs">即将上线</span>
                             </a>
                         </li>
+                        {% if user.is_staff %}
+                            <li class="menu-title"><span>管理</span></li>
+                            <li><a href="{% url 'admin:index' %}">后台管理</a></li>
+                        {% endif %}
                         <li class="menu-title"><span>账户</span></li>
                         <li>
                             <form method="post" action="{% url 'accounts:logout' %}">
@@ -76,6 +79,8 @@
                     <li><a href="{% url 'home' %}">首页</a></li>
                     {% if user.is_authenticated %}
                         <li><a href="{% url 'files:list' %}">文件管理</a></li>
+                    {% endif %}
+                    {% if user.is_staff %}
                         <li><a href="{% url 'admin:index' %}">后台管理</a></li>
                     {% endif %}
                 </ul>

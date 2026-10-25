@@ -42,11 +42,12 @@ DJANGO_APPS = [
 # 第三方应用（后续步骤按需追加，如 django 扩展库）
 THIRD_PARTY_APPS: list[str] = []
 
-# 项目本地应用：utils 提供 templatetags 等通用能力；accounts 用户账户；files 文件管理
+# 项目本地应用：utils 提供 templatetags 等通用能力；accounts 用户账户；files 文件管理；audit 操作日志
 LOCAL_APPS = [
     "utils",
     "apps.accounts",
     "apps.files",
+    "apps.audit",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
