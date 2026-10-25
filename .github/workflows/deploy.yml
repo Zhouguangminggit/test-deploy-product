@@ -78,17 +78,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 直接用 runner 自带 OpenSSH（与本地 ssh 行为一致），避免第三方容器的兼容性问题
       - name: Upload docker-compose.yml
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          source: deploy/docker-compose.yml
-          target: ${{ secrets.DEPLOY_PATH }}
-          overwrite: true
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT || 22 }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -eu
+          if [ -z "${SSH_KEY}" ]; then
+            echo "::error::SSH_KEY 为空，请确认私钥配置在 Secrets 中"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "${SSH_KEY}" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_PASSPHRASE}" ]; then
+            ssh-keygen -p -P "${SSH_PASSPHRASE}" -N "" -f ~/.ssh/deploy_key >/dev/null
+          fi
+
+          echo "Secret 私钥对应的公钥指纹（请与服务器 authorized_keys 中一致）："
+          ssh-keygen -y -f ~/.ssh/deploy_key > /tmp/deploy_key.pub
+          ssh-keygen -lf /tmp/deploy_key.pub
+
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -p ${SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+          if ! ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" 'echo "连接成功：$(whoami)@$(hostname)"'; then
+            echo "::error::SSH 公钥认证失败，请把上面指纹对应的公钥加入服务器 ${SSH_USER} 的 ~/.ssh/authorized_keys"
+            exit 1
+          fi
+
+          ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" "mkdir -p '${DEPLOY_PATH}/deploy'"
+          scp $SSH_OPTS deploy/docker-compose.yml "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/deploy/docker-compose.yml"
 
       - name: Pull, restart and health check
         uses: appleboy/ssh-action@v1
@@ -98,6 +121,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT || 22 }}
+          # 临时开启以输出 SSH 协商细节，定位认证失败后请改回 false
+          debug: true
           script: |
             set -eu
 
