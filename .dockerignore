@@ -1,0 +1,39 @@
+# 精简 Docker 构建上下文，避免无关/敏感文件进入镜像
+.git
+.gitignore
+.github
+.idea
+.vscode
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# 环境变量（通过运行时注入，切勿打入镜像）
+.env
+.env.*
+!.env.example
+
+# 数据库与运行时产物
+db.sqlite3
+db.sqlite3-journal
+staticfiles
+media/*
+!media/.gitkeep
+
+# 前端（镜像内多阶段重新构建）
+node_modules
+static/css/dist
+
+# 文档与非必要文件
+catalog.md
+README.md
+docs
+database

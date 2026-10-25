@@ -1,0 +1,19 @@
+{# 前台顶部导航栏 #}
+<nav class="border-b border-gray-200 bg-white">
+    <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+        <a href="/" class="text-lg font-bold text-gray-900">{{ SITE_NAME }}</a>
+
+        <div class="flex items-center gap-6 text-sm">
+            <a href="/" class="{% nav_active '/' %}">首页</a>
+
+            {% if user.is_authenticated %}
+                <a href="/admin/" class="{% nav_active '/admin/' %}">后台管理</a>
+                <span class="text-gray-400">{{ user.username }}</span>
+            {% else %}
+                <a href="/accounts/login/" class="{% nav_active '/accounts/login/' %}">登录</a>
+                <a href="/accounts/register/"
+                   class="rounded-md bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700">注册</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>

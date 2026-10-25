@@ -1,0 +1,108 @@
+name: CI/CD
+
+# 说明：本工作流为模板，按需启用。
+# - test：所有 push / PR 都会执行 lint + 测试 + 静态资源构建校验
+# - build-image / deploy：仅在 main 分支 push 时执行，部署相关步骤为占位，
+#   需配置对应 Secrets 后取消注释方可真正推送镜像与上线。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        run: npm ci || npm install
+
+      - name: Build Tailwind CSS
+        run: npm run build
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Django system check
+        run: uv run python manage.py check
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.dev
+
+      - name: Run tests
+        run: uv run pytest
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.dev
+
+  build-image:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          tags: django-scaffold:${{ github.sha }}
+
+      # ------- 推送到镜像仓库（按需启用，需配置 Secrets）-------
+      # - name: Login to registry
+      #   uses: docker/login-action@v3
+      #   with:
+      #     registry: ${{ secrets.REGISTRY }}
+      #     username: ${{ secrets.REGISTRY_USER }}
+      #     password: ${{ secrets.REGISTRY_PASSWORD }}
+      # - name: Push image
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: deploy/Dockerfile
+      #     push: true
+      #     tags: ${{ secrets.REGISTRY }}/django-scaffold:${{ github.sha }}
+
+  deploy:
+    name: Deploy (placeholder)
+    needs: build-image
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Notice
+        run: echo "配置 SSH_HOST / SSH_USER / SSH_KEY 等 Secrets 后，取消下方注释以启用部署"
+
+      # ------- 通过 SSH 部署（按需启用）-------
+      # - name: Deploy over SSH
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.SSH_HOST }}
+      #     username: ${{ secrets.SSH_USER }}
+      #     key: ${{ secrets.SSH_KEY }}
+      #     script: |
+      #       cd /opt/django-scaffold
+      #       git pull
+      #       docker compose -f deploy/docker-compose.yml up -d --build

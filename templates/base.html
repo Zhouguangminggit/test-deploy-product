@@ -1,0 +1,24 @@
+{% load static %}<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{% block meta_description %}{{ SITE_DESCRIPTION }}{% endblock %}">
+    <title>{% block title %}{{ SITE_NAME }}{% endblock %}</title>
+
+    {# Tailwind 构建产物（由 npm run build 生成）#}
+    <link rel="stylesheet" href="{% static 'css/dist/base.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-800 antialiased">
+    {% block body %}
+        {% block content %}{% endblock %}
+    {% endblock %}
+
+    {% include "includes/confirm_modal.html" %}
+
+    <script src="{% static 'js/base.js' %}" defer></script>
+    <script src="{% static 'js/common.js' %}" defer></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
