@@ -23,8 +23,9 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       # 数据库等配置由镜像内 .env 提供；使用外部 RDS，跳过入口脚本的数据库等待
       SKIP_DB_WAIT: "1"
-      # 浏览器访问用的域名/IP，由 CI 导出；未设置时保留镜像内 .env 的值
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost}
+      # 浏览器访问用的域名/IP，由 CI 导出；必须保留 localhost,127.0.0.1，
+      # 否则容器内 healthcheck（访问 127.0.0.1:8000）会被 Django 返回 400
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
     # 宿主机端口在执行 compose 的环境中通过 APP_PORT 覆盖，默认 8000
     ports:
       - "${APP_PORT:-8000}:8000"

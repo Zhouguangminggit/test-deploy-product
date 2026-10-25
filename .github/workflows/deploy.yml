@@ -163,9 +163,10 @@ jobs:
             # 宿主机映射端口：docker compose 的端口插值发生在宿主机环境，
             # 镜像内 .env 的 APP_PORT 对 compose 不可见，只能在这里导出
             export APP_PORT="${{ secrets.APP_PORT || '8000' }}"
-            # 浏览器访问用的域名/IP：镜像内 .env.example 的 ALLOWED_HOSTS 只有
-            # localhost，未包含服务器地址时 Django 会直接返回 400
-            export ALLOWED_HOSTS="${{ secrets.APP_HOST || env.SSH_HOST }}"
+            # 浏览器访问用的域名/IP：必须同时包含 localhost,127.0.0.1，
+            # 否则容器内 healthcheck 访问 127.0.0.1:8000 会被 Django 返回 400，
+            # 导致容器被判 unhealthy（环境变量会整体覆盖镜像内 .env 的 ALLOWED_HOSTS）
+            export ALLOWED_HOSTS="${{ secrets.APP_HOST || env.SSH_HOST }},localhost,127.0.0.1"
             COMPOSE="docker compose -f deploy/docker-compose.yml"
 
             echo "==> 登录 ACR"
