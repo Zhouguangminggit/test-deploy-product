@@ -5,7 +5,8 @@ UV ?= uv
 NPM ?= npm
 PYTHON := $(UV) run python
 MANAGE := $(PYTHON) manage.py
-COMPOSE := docker compose -f deploy/docker-compose.yml
+COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
+APP_IMAGE ?= django-scaffold:local
 
 .DEFAULT_GOAL := help
 
@@ -74,11 +75,11 @@ test: ## 运行测试
 
 # ------------------------------ 部署 ------------------------------
 
-docker-build: ## 构建 Docker 镜像
-	docker build -f deploy/Dockerfile -t django-scaffold .
+docker-build: ## 构建本地镜像（默认 tag 为 django-scaffold:local）
+	docker build -f deploy/Dockerfile -t $(APP_IMAGE) .
 
-docker-up: ## 启动容器编排（deploy/docker-compose.yml）
-	$(COMPOSE) up -d --build
+docker-up: ## 启动容器编排（默认本地镜像，可用 APP_IMAGE=xxx make docker-up 指定）
+	APP_IMAGE=$(APP_IMAGE) $(COMPOSE) up -d
 
 docker-down: ## 停止并移除容器编排
 	$(COMPOSE) down

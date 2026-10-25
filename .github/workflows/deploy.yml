@@ -1,64 +1,43 @@
-name: CI/CD
+name: Deploy
 
-# 说明：本工作流为模板，按需启用。
-# - test：所有 push / PR 都会执行 lint + 测试 + 静态资源构建校验
-# - build-image / deploy：仅在 main 分支 push 时执行，部署相关步骤为占位，
-#   需配置对应 Secrets 后取消注释方可真正推送镜像与上线。
+# 流水线阶段：
+#   1. 构建镜像并推送至阿里云 ACR（利用 registry 缓存复用构建层）；
+#   2. 更新服务器上的 docker-compose.yml；
+#   3. 拉取镜像重启服务并做容器健康检查。
+#
+# 需配置的 Secrets（Settings → Secrets and variables → Actions）：
+#   ACR_REGISTRY    镜像仓库地址，如 registry.cn-hangzhou.aliyuncs.com
+#   ACR_NAMESPACE   命名空间
+#   ACR_USERNAME    ACR 账号
+#   ACR_PASSWORD    ACR 密码
+#   SSH_HOST        服务器地址
+#   SSH_USER        服务器用户名
+#   SSH_KEY         SSH 私钥
+#   SSH_PORT        SSH 端口（可选，默认 22）
+#   DEPLOY_PATH     服务器部署目录，如 /opt/django-scaffold
+#
+# 应用运行配置：构建镜像时会自动将 .env.example 复制为 .env 供应用加载，
+# 服务器无需创建或维护环境变量文件。
+#
+# 服务器目录约定：
+#   $DEPLOY_PATH/deploy/docker-compose.yml   # 由本流水线自动覆盖更新
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: django-scaffold
 
 jobs:
-  test:
-    name: Lint & Test
+  build-push:
+    name: Build & Push to ACR
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: "latest"
-
-      - name: Install Python dependencies
-        run: uv sync --frozen
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install frontend dependencies
-        run: npm ci || npm install
-
-      - name: Build Tailwind CSS
-        run: npm run build
-
-      - name: Ruff lint
-        run: uv run ruff check .
-
-      - name: Ruff format check
-        run: uv run ruff format --check .
-
-      - name: Django system check
-        run: uv run python manage.py check
-        env:
-          DJANGO_SETTINGS_MODULE: config.settings.dev
-
-      - name: Run tests
-        run: uv run pytest
-        env:
-          DJANGO_SETTINGS_MODULE: config.settings.dev
-
-  build-image:
-    name: Build Docker Image
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,46 +45,88 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image (no push)
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile
-          push: false
-          tags: django-scaffold:${{ github.sha }}
-
-      # ------- 推送到镜像仓库（按需启用，需配置 Secrets）-------
-      # - name: Login to registry
-      #   uses: docker/login-action@v3
-      #   with:
-      #     registry: ${{ secrets.REGISTRY }}
-      #     username: ${{ secrets.REGISTRY_USER }}
-      #     password: ${{ secrets.REGISTRY_PASSWORD }}
-      # - name: Push image
-      #   uses: docker/build-push-action@v6
-      #   with:
-      #     context: .
-      #     file: deploy/Dockerfile
-      #     push: true
-      #     tags: ${{ secrets.REGISTRY }}/django-scaffold:${{ github.sha }}
+          push: true
+          tags: |
+            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+          # 构建缓存也存入 ACR，后续构建可直接复用依赖层
+          cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          provenance: false
 
   deploy:
-    name: Deploy (placeholder)
-    needs: build-image
+    name: Update Compose & Health Check
+    needs: build-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Notice
-        run: echo "配置 SSH_HOST / SSH_USER / SSH_KEY 等 Secrets 后，取消下方注释以启用部署"
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # ------- 通过 SSH 部署（按需启用）-------
-      # - name: Deploy over SSH
-      #   uses: appleboy/ssh-action@v1
-      #   with:
-      #     host: ${{ secrets.SSH_HOST }}
-      #     username: ${{ secrets.SSH_USER }}
-      #     key: ${{ secrets.SSH_KEY }}
-      #     script: |
-      #       cd /opt/django-scaffold
-      #       git pull
-      #       docker compose -f deploy/docker-compose.yml up -d --build
+      - name: Upload docker-compose.yml
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: deploy/docker-compose.yml
+          target: ${{ secrets.DEPLOY_PATH }}
+          overwrite: true
+
+      - name: Pull, restart and health check
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -eu
+
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            export APP_IMAGE="${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/django-scaffold:${{ github.sha }}"
+            COMPOSE="docker compose -f deploy/docker-compose.yml"
+
+            echo "==> 登录 ACR"
+            echo "${{ secrets.ACR_PASSWORD }}" | docker login "${{ secrets.ACR_REGISTRY }}" \
+              -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+
+            echo "==> 拉取镜像 ${APP_IMAGE}"
+            $COMPOSE pull web
+
+            echo "==> 重启服务"
+            $COMPOSE up -d --remove-orphans
+
+            echo "==> 等待健康检查通过"
+            for i in $(seq 1 30); do
+              cid=$($COMPOSE ps -q web)
+              status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)
+              echo "第 ${i} 次检查：${status}"
+              if [ "$status" = "healthy" ]; then
+                echo "部署成功"
+                exit 0
+              fi
+              if [ "$status" = "unhealthy" ]; then
+                $COMPOSE logs --tail=100 web
+                echo "健康检查失败"
+                exit 1
+              fi
+              sleep 5
+            done
+
+            $COMPOSE logs --tail=100 web
+            echo "健康检查超时"
+            exit 1

@@ -1,61 +1,44 @@
-# 容器编排（按需使用）。
-# 用法：先在项目根目录准备 .env（cp .env.example .env 并填写 MySQL 密码等），然后：
-#   docker compose -f deploy/docker-compose.yml up -d --build
-# 注意：构建上下文为项目根目录（..），Dockerfile 位于 deploy/。
+# 生产部署编排（不含数据库与 Nginx）。
+# - 数据库使用阿里云 RDS 等第三方 MySQL；
+# - 静态文件由 WhiteNoise 直接随应用提供（collectstatic 产物），媒体文件由应用返回；
+# - 镜像由 CI 构建并推送至阿里云 ACR，服务器只拉取启动，不做本地构建；
+# - 运行时配置来自镜像内的 /app/.env（构建时由 .env.example 自动复制）。
+#
+# 服务器目录约定（DEPLOY_PATH）：
+#   deploy/docker-compose.yml     # 由流水线自动更新
+#
+# 手动操作（需提前在 shell 中导出 APP_IMAGE）：
+#   docker compose -f deploy/docker-compose.yml pull
+#   docker compose -f deploy/docker-compose.yml up -d
 
 services:
-  db:
-    image: mysql:8.0
-    restart: unless-stopped
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-django_scaffold}
-      MYSQL_USER: ${MYSQL_USER:-app}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   web:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    # 由 CI 注入本次提交对应的 ACR 镜像地址
+    image: ${APP_IMAGE:-registry.cn-hangzhou.aliyuncs.com/your-namespace/django-scaffold:latest}
+    pull_policy: always
     restart: unless-stopped
-    env_file:
-      - ../.env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
-      MYSQL_HOST: db
-      MYSQL_PORT: "3306"
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - static_files:/app/staticfiles
-      - media_files:/app/media
-    expose:
-      - "8000"
-
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
+      # 数据库等配置由镜像内 .env 提供；使用外部 RDS，跳过入口脚本的数据库等待
+      SKIP_DB_WAIT: "1"
+    # 宿主机端口可在执行 compose 的环境中通过 APP_PORT 覆盖，默认 8000
     ports:
-      - "80:80"
+      - "${APP_PORT:-8000}:8000"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - static_files:/app/staticfiles:ro
-      - media_files:/app/media:ro
-    depends_on:
-      - web
+      - media_files:/app/media
+    healthcheck:
+      # python:3.12-slim 自带 python，无需额外安装 curl
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
 volumes:
-  mysql_data:
-  static_files:
   media_files:

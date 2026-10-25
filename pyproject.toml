@@ -12,6 +12,8 @@ dependencies = [
     "cryptography>=42.0",
     "pillow>=10.4",
     "gunicorn>=21.2",
+    # 生产环境直接由应用提供 collectstatic 产物，无需独立 Nginx
+    "whitenoise>=6.7,<7.0",
     # 统一后端日志出口：拦截标准库 logging 汇入 Loguru（见 utils/log.py）
     "loguru>=0.7,<1.0",
 ]

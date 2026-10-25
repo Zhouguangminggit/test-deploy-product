@@ -28,7 +28,9 @@ echo "==> 应用数据库迁移..."
 python manage.py migrate --noinput
 
 echo "==> 收集静态文件..."
-python manage.py collectstatic --noinput
+# css/base.css 是 Tailwind 源码（含 @import/@plugin），不入 collectstatic；
+# 模板引用的是编译产物 css/dist/base.css。
+python manage.py collectstatic --noinput --ignore "css/base.css"
 
 echo "==> 启动 Gunicorn..."
 exec gunicorn config.wsgi:application \

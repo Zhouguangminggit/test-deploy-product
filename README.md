@@ -17,7 +17,7 @@
 | 前端样式 | Tailwind CSS v4 + DaisyUI 5 | npm 构建，产物输出到 `static/css/dist/` |
 | 前端交互 | Alpine.js 3 + HTMX 2 | vendor 本地引入，无需构建 |
 | 代码规范 | ruff（PEP8） | `make lint` / `make format` |
-| 部署 | Docker + Gunicorn + Nginx | 见 `deploy/` |
+| 部署 | Docker + Gunicorn + WhiteNoise（ACR 镜像 + RDS 数据库） | 见 `deploy/` |
 
 ## 前端 UI 策略
 
@@ -45,7 +45,7 @@ django-scaffold/
 ├── media/                  # 用户上传文件（不提交真实文件）
 ├── scripts/                # 辅助脚本（数据初始化、数据库导入导出）
 ├── database/               # 数据库交付材料（初始化/演示数据）
-├── deploy/                 # 部署配置（Dockerfile / compose / nginx / entrypoint）
+├── deploy/                 # 部署配置（Dockerfile / compose / entrypoint）
 ├── tests/                  # 框架级冒烟测试
 └── .github/workflows/      # CI/CD 模板（按需使用）
 ```
@@ -97,16 +97,18 @@ make run          # 启动开发服务器（等价于 uv run python manage.py ru
 ## 线上部署
 
 部署材料位于 `deploy/`，采用多阶段 Docker 构建（Node 22 阶段编译 Tailwind，Python 阶段运行 Gunicorn），
-并由 Nginx 反向代理与提供静态/媒体文件：
+数据库使用阿里云 RDS 等第三方 MySQL，静态文件由 WhiteNoise 随应用直接提供（无需 Nginx）：
 
 ```bash
 # 语法校验
-docker compose -f deploy/docker-compose.yml config
+docker compose --env-file .env -f deploy/docker-compose.yml config
 # 构建镜像
 make docker-build
 ```
 
-`.github/workflows/deploy.yml` 提供了从检查、测试、构建镜像到部署的 CI/CD 模板（按需启用并填充密钥）。
+`.github/workflows/deploy.yml` 负责构建并推送镜像到阿里云 ACR、更新服务器 `docker-compose.yml`、
+拉取镜像重启并做容器健康检查（不设测试门禁）。镜像构建时会自动将 `.env.example` 复制为 `.env`，
+应用启动时加载其中的配置，服务器无需维护环境变量文件。
 
 ## 分步建设规划
 

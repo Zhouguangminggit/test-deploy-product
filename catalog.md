@@ -229,13 +229,11 @@ django-scaffold/
 │   └── import_database.py                # 数据导入脚本
 │
 ├── deploy/                               # 部署配置
-│   ├── Dockerfile                        # Docker 镜像构建文件
-│   ├── docker-compose.yml                # 容器编排配置（按需使用）
-│   ├── nginx/
-│   │   └── default.conf                  # Nginx 配置
-│   └── entrypoint.sh                     # 容器启动脚本
+│   ├── Dockerfile                        # Docker 镜像构建文件（多阶段：前端构建 + 运行时）
+│   ├── docker-compose.yml                # 容器编排（ACR 镜像 + 第三方数据库，静态由 WhiteNoise 提供）
+│   └── entrypoint.sh                     # 容器启动脚本（迁移 / collectstatic / Gunicorn）
 │
 └── .github/
     └── workflows/
-        └── deploy.yml                    # 生产环境部署工作流（按需使用）
+        └── deploy.yml                    # CI/CD：构建推送 ACR → 更新 compose → 部署健康检查
 ```

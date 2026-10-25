@@ -60,6 +60,8 @@ AUTH_USER_MODEL = "accounts.User"
 # ----------------------------- 中间件 -----------------------------
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # 生产环境由应用直接提供静态文件（无需独立 Nginx）
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "utils.middleware.RequestMetaMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

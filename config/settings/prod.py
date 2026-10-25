@@ -36,6 +36,14 @@ else:
         }
     }
 
+# ----------------------------- 静态文件（WhiteNoise）-----------------------------
+# 生产环境不部署 Nginx：collectstatic 产物由 WhiteNoise 随应用直接提供。
+# 使用带哈希清单的压缩存储，文件名变化即可长期缓存；collectstatic 由容器入口脚本执行。
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+
 # ----------------------------- 邮件（SMTP）-----------------------------
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")

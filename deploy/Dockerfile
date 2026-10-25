@@ -44,6 +44,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 # 拷贝项目代码（.dockerignore 已排除 .venv / node_modules 等）
 COPY . .
 
+# 构建时生成运行时 .env：将示例配置复制为 .env，供 django-environ 启动时加载
+RUN cp .env.example .env
+
 # 覆盖前端构建产物（放在 COPY . . 之后，避免被宿主机的旧产物覆盖）
 COPY --from=frontend-builder /app/static/css/dist ./static/css/dist
 
