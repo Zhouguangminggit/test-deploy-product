@@ -17,11 +17,21 @@ AVATAR_MAX_SIZE = 512
 
 
 def register_user(*, username: str, nickname: str, password: str) -> User:
-    """创建普通用户（非超管）。密码经 create_user 自动哈希。"""
+    """创建普通用户（非超管）。密码经 create_user 自动哈希，并发送欢迎通知。"""
     user = User.objects.create_user(username=username, password=password)
     user.nickname = nickname
     user.save(update_fields=["nickname"])
     logger.info("用户注册成功：username={}", username)
+
+    # 事件自动通知：注册欢迎消息（延迟导入，避免模块间循环依赖）
+    from apps.notifications.services import notify_user
+
+    notify_user(
+        user,
+        "欢迎加入",
+        f"你好，{nickname or username}！欢迎使用本系统，可在个人中心完善资料。",
+        level="success",
+    )
     return user
 
 

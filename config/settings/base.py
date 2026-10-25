@@ -42,12 +42,13 @@ DJANGO_APPS = [
 # 第三方应用（后续步骤按需追加，如 django 扩展库）
 THIRD_PARTY_APPS: list[str] = []
 
-# 项目本地应用：utils 提供 templatetags 等通用能力；accounts 用户账户；files 文件管理；audit 操作日志
+# 项目本地应用：utils 提供 templatetags 等通用能力；accounts 用户账户；files 文件管理；audit 操作日志；notifications 消息通知
 LOCAL_APPS = [
     "utils",
     "apps.accounts",
     "apps.files",
     "apps.audit",
+    "apps.notifications",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -83,6 +84,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "utils.context_processors.site_info",
+                "utils.context_processors.notification_badge",
             ],
             # 全局内置模板标签，无需在每个模板 {% load %}
             "builtins": [

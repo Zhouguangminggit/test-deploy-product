@@ -48,10 +48,11 @@
                     <ul tabindex="0" class="dropdown-content menu z-[1] mt-2 w-52 rounded-box bg-base-100 p-2 shadow">
                         <li><a href="{% url 'accounts:profile' %}">个人中心</a></li>
                         <li>
-                            {# 消息通知入口：实体模块后续批次建设，先作为占位 #}
-                            <a href="#" class="opacity-60" title="即将上线">
+                            <a href="{% url 'notifications:list' %}">
                                 消息通知
-                                <span class="badge badge-ghost badge-xs">即将上线</span>
+                                {% if UNREAD_MESSAGE_COUNT %}
+                                    <span class="badge badge-error badge-sm text-badge-content">{{ UNREAD_MESSAGE_COUNT }}</span>
+                                {% endif %}
                             </a>
                         </li>
                         {% if user.is_staff %}

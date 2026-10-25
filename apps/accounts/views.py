@@ -14,7 +14,7 @@ from apps.audit.models import OperationAction
 from utils.decorators import anonymous_required
 
 from .forms import LoginForm, PasswordUpdateForm, ProfileForm, RegisterForm
-from .services import change_password, update_profile
+from .services import change_password, register_user, update_profile
 
 
 @anonymous_required
@@ -37,7 +37,12 @@ def register_view(request: HttpRequest) -> HttpResponse:
     """注册：成功后自动登录并进入个人中心。"""
     form = RegisterForm(data=request.POST or None)
     if request.method == "POST" and form.is_valid():
-        user = form.save()
+        # 业务逻辑下沉 service：创建用户（含哈希密码）并发送注册欢迎通知
+        user = register_user(
+            username=form.cleaned_data["username"],
+            nickname=form.cleaned_data["nickname"],
+            password=form.cleaned_data["password1"],
+        )
         login(request, user)
         messages.success(request, "注册成功，欢迎加入！")
         return redirect("accounts:profile")
