@@ -12,8 +12,13 @@ from django.conf import settings
 from django.contrib import admin
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import render
-from django.urls import path, re_path
+from django.urls import include, path, re_path
 from django.views.static import serve
+
+
+def home(request: HttpRequest):
+    """前台首页（占位，展示基座与后续业务模块入口）。"""
+    return render(request, "home.html")
 
 
 def healthz(request: HttpRequest) -> JsonResponse:
@@ -37,7 +42,9 @@ def handler500(request: HttpRequest):
 
 
 urlpatterns = [
+    path("", home, name="home"),
     path("admin/", admin.site.urls),
+    path("accounts/", include("apps.accounts.urls")),
     path("healthz/", healthz, name="healthz"),
 ]
 

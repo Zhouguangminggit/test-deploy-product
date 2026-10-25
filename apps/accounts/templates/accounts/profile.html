@@ -1,0 +1,90 @@
+{% extends "layouts/frontend.html" %}
+{% load static %}
+
+{% block title %}个人中心 · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {# ---------- 左：基本资料展示 ---------- #}
+        <div class="card bordered bg-base-100 shadow-sm lg:col-span-1">
+            <div class="card-body items-center text-center">
+                <div class="avatar">
+                    <div class="w-24 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
+                        {% if user.avatar %}
+                            <img src="{{ user.avatar.url }}" alt="{{ user.display_name }}">
+                        {% else %}
+                            <div class="bg-neutral text-neutral-content flex h-full w-full items-center justify-center rounded-full">
+                                <span class="text-3xl font-bold">{{ user.display_name|slice:":1"|upper }}</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <h2 class="card-title mt-3">{{ user.display_name }}</h2>
+                <div class="w-full divide-y divide-base-200 pt-2 text-left text-sm">
+                    <div class="flex justify-between py-2"><span class="opacity-60">用户名</span><span>{{ user.username }}</span></div>
+                    <div class="flex justify-between py-2"><span class="opacity-60">邮箱</span><span>{{ user.email|placeholder:"未填写" }}</span></div>
+                    <div class="flex justify-between py-2"><span class="opacity-60">手机号</span><span>{{ user.phone|placeholder:"未填写" }}</span></div>
+                    <div class="flex justify-between py-2"><span class="opacity-60">注册时间</span><span>{{ user.date_joined|datetime_fmt }}</span></div>
+                </div>
+            </div>
+        </div>
+
+        {# ---------- 右：编辑资料 + 修改密码 ---------- #}
+        <div class="space-y-6 lg:col-span-2">
+            {# 编辑资料 #}
+            <div class="card bordered bg-base-100 shadow-sm">
+                <div class="card-body">
+                    <h3 class="card-title">编辑资料</h3>
+
+                    <form method="post" enctype="multipart/form-data" novalidate
+                          x-data="{ fileName: '' }">
+                        {% csrf_token %}
+                        <input type="hidden" name="form" value="profile">
+
+                        {% include "accounts/_field.html" with field=profile_form.nickname %}
+                        {% include "accounts/_field.html" with field=profile_form.email %}
+                        {% include "accounts/_field.html" with field=profile_form.phone %}
+
+                        <div class="form-control w-full">
+                            <label class="label" for="{{ profile_form.avatar.id_for_label }}">
+                                <span class="label-text">{{ profile_form.avatar.label }}</span>
+                            </label>
+                            {{ profile_form.avatar }}
+                            {% for error in profile_form.avatar.errors %}
+                                <label class="label"><span class="label-text-alt text-error">{{ error }}</span></label>
+                            {% endfor %}
+                        </div>
+
+                        <div class="card-actions justify-end pt-4">
+                            <button type="submit" class="btn btn-primary btn-sm">保存资料</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {# 修改密码 #}
+            <div class="card bordered bg-base-100 shadow-sm">
+                <div class="card-body">
+                    <h3 class="card-title">修改密码</h3>
+
+                    {% if password_form.non_field_errors %}
+                        <div class="alert alert-error text-sm"><span>{{ password_form.non_field_errors.0 }}</span></div>
+                    {% endif %}
+
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="form" value="password">
+
+                        {% include "accounts/_field.html" with field=password_form.old_password %}
+                        {% include "accounts/_field.html" with field=password_form.new_password1 %}
+                        {% include "accounts/_field.html" with field=password_form.new_password2 %}
+
+                        <div class="card-actions justify-end pt-4">
+                            <button type="submit" class="btn btn-primary btn-sm">更新密码</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

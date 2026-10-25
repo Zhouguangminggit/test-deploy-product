@@ -69,3 +69,22 @@ def test_custom_template_tags_available():
     )
     # base.html 应引入 Tailwind 编译产物路径
     assert "css/dist/base.css" in html
+
+
+def test_home_page(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "Django Scaffold" in resp.content.decode()
+
+
+def test_account_pages_accessible(client):
+    """首批 accounts 模块：登录 / 注册页可匿名访问。"""
+    assert client.get("/accounts/login/").status_code == 200
+    assert client.get("/accounts/register/").status_code == 200
+
+
+def test_profile_requires_login(client):
+    """未登录访问个人中心应重定向到登录页。"""
+    resp = client.get("/accounts/profile/")
+    assert resp.status_code == 302
+    assert "/accounts/login/" in resp["Location"]

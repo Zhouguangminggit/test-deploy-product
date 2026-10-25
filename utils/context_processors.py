@@ -13,5 +13,6 @@ def site_info(request: HttpRequest) -> dict:
     return {
         "SITE_NAME": getattr(settings, "SITE_NAME", "Django Scaffold"),
         "SITE_DESCRIPTION": getattr(settings, "SITE_DESCRIPTION", "团队产品基座脚手架"),
+        "SITE_LOGO": getattr(settings, "SITE_LOGO", ""),
         "REQUEST_ID": getattr(request, "request_id", ""),
     }

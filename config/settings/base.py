@@ -42,12 +42,17 @@ DJANGO_APPS = [
 # 第三方应用（后续步骤按需追加，如 django 扩展库）
 THIRD_PARTY_APPS: list[str] = []
 
-# 项目本地应用：utils 提供 templatetags 等通用能力
+# 项目本地应用：utils 提供 templatetags 等通用能力；accounts 为用户账户模块
 LOCAL_APPS = [
     "utils",
+    "apps.accounts",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+# 自定义用户模型（accounts.User 继承 AbstractUser）。
+# 必须在首次迁移前设置；label 为 "accounts"，故写 "accounts.User"。
+AUTH_USER_MODEL = "accounts.User"
 
 # ----------------------------- 中间件 -----------------------------
 MIDDLEWARE = [
@@ -115,6 +120,8 @@ USE_TZ = True
 # 由 utils.context_processors.site_info 注入模板，供页面头部/标题使用
 SITE_NAME = env("SITE_NAME", default="Django Scaffold")
 SITE_DESCRIPTION = env("SITE_DESCRIPTION", default="团队产品基座脚手架")
+# 导航栏 logo 静态资源路径（如 "images/logo.png"）；留空则显示文字徽标
+SITE_LOGO = env("SITE_LOGO", default="")
 
 # ----------------------------- 静态与媒体文件 -----------------------------
 STATIC_URL = "static/"
