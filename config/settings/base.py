@@ -20,7 +20,6 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, []),
     TIME_ZONE=(str, "Asia/Shanghai"),
     LANGUAGE_CODE=(str, "zh-hans"),
-    SECURE_SSL_REDIRECT=(bool, False),
 )
 # 加载根目录 .env（存在才读取，不覆盖已有环境变量）
 env.read_env(str(BASE_DIR / ".env"))
@@ -137,10 +136,6 @@ LOGOUT_REDIRECT_URL = "/"
 # 默认输出到控制台；生产环境在 prod.py 按需切换为 SMTP。
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@example.com")
-
-# ----------------------------- 安全（基线，可在 prod 加固）-----------------------------
-SECURE_SSL_REDIRECT = env("SECURE_SSL_REDIRECT")
-X_FRAME_OPTIONS = "SAMEORIGIN"
 
 # ----------------------------- 日志（Loguru）-----------------------------
 # 统一后端日志出口为 Loguru：

@@ -17,6 +17,9 @@
 
     {% include "includes/confirm_modal.html" %}
 
+    {# 前端交互库（vendor 本地引入）：HTMX 负责无 JS 的局部刷新，Alpine.js 负责轻量交互 #}
+    <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+    <script src="{% static 'vendor/alpine.min.js' %}" defer></script>
     <script src="{% static 'js/base.js' %}" defer></script>
     <script src="{% static 'js/common.js' %}" defer></script>
     {% block extra_js %}{% endblock %}

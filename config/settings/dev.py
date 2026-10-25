@@ -19,9 +19,6 @@ DATABASES = {
     }
 }
 
-# 开发环境不强制 HTTPS
-SECURE_SSL_REDIRECT = False
-
 # 开发环境默认 DEBUG 级别，可见业务调试日志（utils logger）；
 # django 内部 logger 阈值不低于 INFO、django.utils.autoreload 固定 WARNING、
 # django.db.backends 固定 INFO、django.server 固定 WARNING（见 build_logging_config），

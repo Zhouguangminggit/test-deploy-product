@@ -9,3 +9,11 @@ class CommonStatus(StrEnum):
 
     ENABLED = "enabled"
     DISABLED = "disabled"
+
+
+@unique
+class SortOrder(StrEnum):
+    """通用排序方向。"""
+
+    ASC = "asc"
+    DESC = "desc"

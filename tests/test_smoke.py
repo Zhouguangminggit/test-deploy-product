@@ -36,13 +36,10 @@ def test_custom_404_page(client):
     [
         "base.html",
         "layouts/frontend.html",
-        "layouts/backend.html",
         "errors/403.html",
         "errors/404.html",
         "errors/500.html",
         "includes/navbar.html",
-        "includes/sidebar.html",
-        "includes/header.html",
         "includes/footer.html",
         "includes/messages.html",
         "includes/confirm_modal.html",

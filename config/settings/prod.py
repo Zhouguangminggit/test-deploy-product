@@ -1,8 +1,8 @@
 """生产环境配置。
 
-继承 base.py，关闭 DEBUG，使用 MySQL（PyMySQL 驱动），并进行安全加固。
-所有敏感项均来自环境变量；HTTPS 相关开关默认关闭，以便纯 HTTP 的容器编排演示可正常运行，
-正式启用 HTTPS 后请通过环境变量将 SECURE_SSL_REDIRECT / *_COOKIE_SECURE / SECURE_HSTS_SECONDS 打开。
+继承 base.py，关闭 DEBUG，使用 MySQL（PyMySQL 驱动）。
+所有敏感项均来自环境变量。本脚手架面向毕设等演示场景，默认纯 HTTP 部署，
+不引入 HTTPS / HSTS 等强安全配置；Django 默认安全中间件（CSRF、点击劫持防护等）保持启用。
 """
 
 from .base import *  # noqa: F401,F403
@@ -35,21 +35,6 @@ else:
             },
         }
     }
-
-# ----------------------------- 安全加固 -----------------------------
-# 位于 Nginx 反向代理之后，据此识别原始协议
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_REFERRER_POLICY = "same-origin"
-X_FRAME_OPTIONS = "DENY"
-
-# HTTPS 相关（默认关闭，启用 HTTPS 后通过环境变量打开）
-SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
-SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
-CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
-SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
-SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
-SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
 
 # ----------------------------- 邮件（SMTP）-----------------------------
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")

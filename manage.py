@@ -15,8 +15,7 @@ def main() -> None:
         from django.core.management import execute_from_command_line
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "无法导入 Django。请确认已创建并激活虚拟环境（执行 `uv sync`），"
-            "且依赖已正确安装。"
+            "无法导入 Django。请确认已创建并激活虚拟环境（执行 `uv sync`），且依赖已正确安装。"
         ) from exc
     execute_from_command_line(sys.argv)
 

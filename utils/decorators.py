@@ -17,10 +17,9 @@ def ajax_required(view_func):
 
     @functools.wraps(view_func)
     def _wrapped(request: HttpRequest, *args, **kwargs):
-        is_ajax = (
-            request.headers.get("x-requested-with") == "XMLHttpRequest"
-            or "application/json" in request.headers.get("accept", "")
-        )
+        is_ajax = request.headers.get(
+            "x-requested-with"
+        ) == "XMLHttpRequest" or "application/json" in request.headers.get("accept", "")
         if not is_ajax:
             return JsonResponse(
                 {"code": 1, "message": "仅支持 AJAX 请求", "data": None},

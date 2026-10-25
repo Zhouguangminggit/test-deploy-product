@@ -7,7 +7,7 @@
 # ==============================================================================
 
 # ------------------------- 阶段一：前端资源构建 -------------------------
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 
@@ -15,8 +15,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 
-# Tailwind 需要扫描模板与样式源文件来生成用到的类
-COPY tailwind.config.js ./
+# Tailwind v4 自动扫描项目内容生成用到的类（CSS-first 配置，无需 tailwind.config.js）
 COPY static/ ./static/
 COPY templates/ ./templates/
 

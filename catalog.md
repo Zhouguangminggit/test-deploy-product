@@ -6,8 +6,11 @@
 django-scaffold/
 │
 ├── manage.py                              # Django 项目管理入口
+├── Makefile                              # 一键命令入口（make help 查看全部）
 ├── pyproject.toml                         # 项目依赖与工具配置
 ├── uv.lock                                # 依赖锁定文件
+├── package.json                          # 前端构建链（Tailwind v4 + DaisyUI）
+├── .nvmrc                                # Node 版本约定（>= 20）
 ├── .python-version                       # Python 版本
 ├── .env.example                          # 环境变量示例，不包含真实密钥
 ├── .gitignore                            # Git 忽略规则
@@ -130,15 +133,12 @@ django-scaffold/
 ├── templates/                            # 全局 Django 模板
 │   ├── base.html                         # 全局基础模板
 │   │
-│   ├── layouts/                          # 页面布局
-│   │   ├── frontend.html                 # 前台页面布局
-│   │   └── backend.html                  # 后台管理布局
+│   ├── layouts/                          # 页面布局（仅前端；后台布局由三方主题库适配）
+│   │   └── frontend.html                 # 前台页面布局
 │   │
 │   ├── includes/                         # 公共模板片段
-│   │   ├── header.html                   # 页面头部
 │   │   ├── footer.html                   # 页面底部
 │   │   ├── navbar.html                   # 导航栏
-│   │   ├── sidebar.html                  # 侧边栏
 │   │   ├── pagination.html               # 分页组件
 │   │   ├── messages.html                 # 消息提示
 │   │   └── confirm_modal.html            # 通用确认弹窗
@@ -153,16 +153,16 @@ django-scaffold/
 │
 ├── static/                               # 项目静态资源
 │   ├── css/
-│   │   ├── base.css                      # 全局基础样式
+│   │   ├── base.css                      # Tailwind v4 入口（@plugin "daisyui"），构建后引用 dist 产物
 │   │   ├── frontend.css                  # 前台样式
-│   │   └── backend.css                   # 后台样式
+│   │   └── dist/                         # Tailwind 构建产物（git 忽略）
 │   │
 │   ├── js/
 │   │   ├── base.js                       # 全局 JavaScript
 │   │   └── common.js                     # 通用交互逻辑
 │   │
 │   ├── images/                           # 项目静态图片
-│   └── vendor/                           # 本地第三方静态资源
+│   └── vendor/                           # 本地第三方静态资源（alpine.min.js / htmx.min.js）
 │
 ├── media/                                # 用户上传文件目录
 │   └── .gitkeep                         # 保留目录，不提交真实用户文件
@@ -239,4 +239,3 @@ django-scaffold/
     └── workflows/
         └── deploy.yml                    # 生产环境部署工作流（按需使用）
 ```
-

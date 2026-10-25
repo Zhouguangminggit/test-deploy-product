@@ -1,4 +1,4 @@
-{# 分页组件：配合 utils.pagination.PageResult 使用 #}
+{# 分页组件：配合 utils.pagination.PageResult 使用（DaisyUI join + btn） #}
 {# 用法：{% include "includes/pagination.html" with page_result=pager %} #}
 {% if page_result and page_result.total_pages > 1 %}
     <nav class="flex flex-wrap items-center justify-between gap-3 py-4 text-sm" aria-label="分页导航">
@@ -6,27 +6,21 @@
             共 {{ page_result.total }} 条，第 {{ page_result.page }} / {{ page_result.total_pages }} 页
         </span>
 
-        <ul class="flex items-center gap-1">
-            <li>
-                <a href="?page={{ page_result.previous_page }}"
-                   class="rounded-md border border-gray-200 px-3 py-1.5 text-gray-600 hover:bg-gray-50
-                          {% if not page_result.has_previous %}pointer-events-none opacity-40{% endif %}">上一页</a>
-            </li>
+        <div class="join">
+            <a href="?page={{ page_result.previous_page }}"
+               class="btn btn-outline btn-xs join-item
+                      {% if not page_result.has_previous %}btn-disabled pointer-events-none{% endif %}">上一页</a>
 
             {% for num in page_result.page_range %}
-                <li>
-                    <a href="?page={{ num }}"
-                       class="rounded-md border px-3 py-1.5
-                              {% if num == page_result.page %}border-blue-600 bg-blue-600 text-white
-                              {% else %}border-gray-200 text-gray-600 hover:bg-gray-50{% endif %}">{{ num }}</a>
-                </li>
+                <a href="?page={{ num }}"
+                   class="btn btn-xs join-item
+                          {% if num == page_result.page %}btn-primary
+                          {% else %}btn-outline{% endif %}">{{ num }}</a>
             {% endfor %}
 
-            <li>
-                <a href="?page={{ page_result.next_page }}"
-                   class="rounded-md border border-gray-200 px-3 py-1.5 text-gray-600 hover:bg-gray-50
-                          {% if not page_result.has_next %}pointer-events-none opacity-40{% endif %}">下一页</a>
-            </li>
-        </ul>
+            <a href="?page={{ page_result.next_page }}"
+               class="btn btn-outline btn-xs join-item
+                      {% if not page_result.has_next %}btn-disabled pointer-events-none{% endif %}">下一页</a>
+        </div>
     </nav>
 {% endif %}
