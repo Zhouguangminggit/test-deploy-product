@@ -11,7 +11,14 @@ from .base import build_logging_config, env
 DEBUG = False
 
 # 生产必须显式配置允许的主机（多个以逗号分隔）
+# 注意：部署时需通过环境变量覆盖为浏览器实际访问的域名/IP，否则 Django 对
+# 不匹配的 Host 直接返回 400（镜像内 .env 来自 .env.example，默认只有 localhost）。
 ALLOWED_HOSTS = env("ALLOWED_HOSTS", default=[])
+
+# 本脚手架默认纯 HTTP 部署：SecurityMiddleware 默认下发的
+# Cross-Origin-Opener-Policy 头在不可信来源（非 HTTPS、非 localhost）会被浏览器
+# 忽略并打印警告；显式关闭该头以消除噪声（COOP 仅在 HTTPS 场景有意义）。
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None
 
 # ----------------------------- 数据库（MySQL）-----------------------------
 # 优先使用 DATABASE_URL；否则由 MYSQL_* 变量组合。

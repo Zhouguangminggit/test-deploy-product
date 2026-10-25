@@ -2,12 +2,14 @@
 # - 数据库使用阿里云 RDS 等第三方 MySQL；
 # - 静态文件由 WhiteNoise 直接随应用提供（collectstatic 产物），媒体文件由应用返回；
 # - 镜像由 CI 构建并推送至阿里云 ACR，服务器只拉取启动，不做本地构建；
-# - 运行时配置来自镜像内的 /app/.env（构建时由 .env.example 自动复制）。
+# - 运行时配置来自镜像内的 /app/.env（构建时由 .env.example 自动复制）；
+#   与服务器相关的 ALLOWED_HOSTS / APP_PORT 由 CI 在宿主机环境导出后注入。
 #
 # 服务器目录约定（DEPLOY_PATH）：
 #   deploy/docker-compose.yml     # 由流水线自动更新
 #
-# 手动操作（需提前在 shell 中导出 APP_IMAGE）：
+# 手动操作（需提前在 shell 中导出 APP_IMAGE，可选 APP_PORT / ALLOWED_HOSTS）：
+#   export APP_IMAGE=... APP_PORT=8004 ALLOWED_HOSTS=43.143.145.111
 #   docker compose -f deploy/docker-compose.yml pull
 #   docker compose -f deploy/docker-compose.yml up -d
 
@@ -21,7 +23,9 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       # 数据库等配置由镜像内 .env 提供；使用外部 RDS，跳过入口脚本的数据库等待
       SKIP_DB_WAIT: "1"
-    # 宿主机端口可在执行 compose 的环境中通过 APP_PORT 覆盖，默认 8000
+      # 浏览器访问用的域名/IP，由 CI 导出；未设置时保留镜像内 .env 的值
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost}
+    # 宿主机端口在执行 compose 的环境中通过 APP_PORT 覆盖，默认 8000
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
