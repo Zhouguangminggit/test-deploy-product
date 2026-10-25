@@ -13,8 +13,9 @@ name: Deploy
 #   ACR_PASSWORD    ACR 密码
 #   SSH_HOST        服务器地址
 #   SSH_USER        服务器用户名
-#   SSH_KEY         SSH 私钥
+#   SSH_KEY         SSH 私钥 d
 #   SSH_PORT        SSH 端口（可选，默认 22）
+#   SSH_PASSPHRASE  私钥口令（可选，私钥无口令时留空） d
 #   DEPLOY_PATH     服务器部署目录，如 /opt/django-scaffold
 #
 # 应用运行配置：构建镜像时会自动将 .env.example 复制为 .env 供应用加载，
@@ -38,7 +39,7 @@ env:
 
 jobs:
   build-push:
-    name: Build & Push to ACR
+    name: 构建镜像并推送至 ACR
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -70,7 +71,7 @@ jobs:
           provenance: false
 
   deploy:
-    name: Update Compose & Health Check
+    name: 更新部署文件并部署检查
     needs: build-push
     runs-on: ubuntu-latest
     steps:
@@ -83,6 +84,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT || 22 }}
           source: deploy/docker-compose.yml
           target: ${{ secrets.DEPLOY_PATH }}
@@ -94,6 +96,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -eu
