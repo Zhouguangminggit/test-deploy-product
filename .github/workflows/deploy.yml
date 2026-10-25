@@ -89,10 +89,36 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           set -eu
-          if [ -z "${SSH_KEY}" ]; then
-            echo "::error::SSH_KEY 为空，请确认私钥配置在 Secrets 中"
-            exit 1
-          fi
+
+          # 清理 Secret 中可能混入的空格/换行，并兼容误填成 user@host 的写法
+          SSH_USER=$(printf '%s' "${SSH_USER}" | tr -d '[:space:]')
+          SSH_HOST=$(printf '%s' "${SSH_HOST}" | tr -d '[:space:]')
+          SSH_PORT=$(printf '%s' "${SSH_PORT}" | tr -d '[:space:]')
+          DEPLOY_PATH=$(printf '%s' "${DEPLOY_PATH}" | sed 's/[[:space:]]*$//')
+          SSH_USER="${SSH_USER%%@*}"
+          SSH_HOST="${SSH_HOST##*@}"
+          [ -n "${SSH_PORT}" ] || SSH_PORT=22
+
+          case "${SSH_USER}" in
+            ""|*[!A-Za-z0-9._-]*) echo "::error::SSH_USER 为空或含非法字符，应只填写登录用户名（如 root）"; exit 1 ;;
+          esac
+          case "${SSH_HOST}" in
+            ""|*[!A-Za-z0-9.-]*) echo "::error::SSH_HOST 为空或含非法字符，应只填写域名/IP（不要带 user@ 或端口）"; exit 1 ;;
+          esac
+          case "${SSH_PORT}" in
+            *[!0-9]*) echo "::error::SSH_PORT 只能是数字"; exit 1 ;;
+          esac
+          [ -n "${DEPLOY_PATH}" ] || { echo "::error::DEPLOY_PATH 为空"; exit 1; }
+          [ -n "${SSH_KEY}" ] || { echo "::error::SSH_KEY 为空，请确认私钥配置在 Secrets 中"; exit 1; }
+
+          # 供后续步骤复用清理后的值
+          {
+            echo "SSH_USER=${SSH_USER}"
+            echo "SSH_HOST=${SSH_HOST}"
+            echo "SSH_PORT=${SSH_PORT}"
+            echo "DEPLOY_PATH=${DEPLOY_PATH}"
+          } >> "${GITHUB_ENV}"
+
           mkdir -p ~/.ssh
           printf '%s\n' "${SSH_KEY}" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
@@ -104,9 +130,10 @@ jobs:
           ssh-keygen -y -f ~/.ssh/deploy_key > /tmp/deploy_key.pub
           ssh-keygen -lf /tmp/deploy_key.pub
 
-          SSH_OPTS="-i $HOME/.ssh/deploy_key -p ${SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+          # 用 -o Port= 同时兼容 ssh 与 scp（scp 的 -P 与 ssh 的 -p 含义不同）
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o Port=${SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
           if ! ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" 'echo "连接成功：$(whoami)@$(hostname)"'; then
-            echo "::error::SSH 公钥认证失败，请把上面指纹对应的公钥加入服务器 ${SSH_USER} 的 ~/.ssh/authorized_keys"
+            echo "::error::SSH 连接失败：请确认用户 ${SSH_USER} 的 ~/.ssh/authorized_keys 中包含上面指纹对应的公钥"
             exit 1
           fi
 
@@ -116,17 +143,17 @@ jobs:
       - name: Pull, restart and health check
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
+          host: ${{ env.SSH_HOST }}
+          username: ${{ env.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          port: ${{ env.SSH_PORT }}
           # 临时开启以输出 SSH 协商细节，定位认证失败后请改回 false
           debug: true
           script: |
             set -eu
 
-            cd "${{ secrets.DEPLOY_PATH }}"
+            cd "${{ env.DEPLOY_PATH }}"
 
             export APP_IMAGE="${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
             COMPOSE="docker compose -f deploy/docker-compose.yml"
