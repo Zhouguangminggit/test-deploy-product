@@ -1,120 +1,75 @@
 # django-scaffold
 
-团队产品基座脚手架 —— 基于 Django 的工程化产品基座框架。
+## 项目定位
 
-面向团队零基础新成员，结合内部 SOP 流程，快速搭建以「毕设主题业务」为主体的产品项目。
-本仓库提供统一的目录结构、通用能力层（`utils`）、模板与静态资源体系、以及可本地运行、可容器化线上部署的工程基座。
+django-scaffold 是团队的**产品基座脚手架**：基于 Django 搭建好工程化底座（用户认证、文件管理、操作日志、消息通知、异步任务等通用能力已内置），团队成员按内部 SOP 流程在此基础上快速搭建各种毕设主题的业务产品项目，零基础新手也能照文档直接上手。
 
-## 技术栈与版本
+---
 
-| 组件 | 选型 | 说明 |
-| --- | --- | --- |
-| 语言 | Python 3.12 | 由 `uv` 自动拉取并锁定 |
-| 框架 | Django 5.2 LTS | 服务端渲染 MVT 模式（前后端不分离） |
-| 依赖/环境 | uv | `pyproject.toml` + `uv.lock` |
-| 数据库 | SQLite(开发) / MySQL(生产) | 生产通过 PyMySQL 驱动 |
-| 配置 | django-environ | `.env` 驱动，分环境 settings |
-| 前端样式 | Tailwind CSS v4 + DaisyUI 5 | npm 构建，产物输出到 `static/css/dist/` |
-| 前端交互 | Alpine.js 3 + HTMX 2 | vendor 本地引入，无需构建 |
-| 代码规范 | ruff（PEP8） | `make lint` / `make format` |
-| 异步任务 | Celery + Redis（云托管） | 耗时任务异步化；django-celery-beat（定时任务 Admin 管理）+ django-celery-results（结果落库），见 `docs/README.md` |
-| 部署 | Docker + Gunicorn + WhiteNoise（ACR 镜像 + RDS 数据库） | 见 `deploy/` |
+## 本地启动（按顺序做完即可）
 
-## 前端 UI 策略
+### 第 1 步：安装 Python 3.12
 
-本项目为前后端不分离的模板渲染架构，**不采用 shadcn/ui**（官方仅支持 React 生态，与 Django 模板不兼容）。
-实际选型为对模板渲染最友好的现代组合：
+- 下载地址：<https://www.python.org/downloads/release/python-3127/>（页面底部 Files 区，Windows 选 `Windows installer (64-bit)`，Mac 选 `macOS 64-bit universal2 installer`）
+- **Windows**：安装时务必勾选 **"Add Python to PATH"**，再点 Install Now
+- **Mac**：双击 pkg 一路继续即可
 
-- **Tailwind CSS v4**：原子化样式引擎，CSS-first 配置（无 `tailwind.config.js`，内容自动扫描）；
-- **DaisyUI 5**：Tailwind 组件插件，`btn` / `card` / `modal` / `alert` / `table` 等语义类直接写进模板，30+ 内置主题；
-- **Alpine.js + HTMX**：HTML 属性声明交互与局部刷新，业务页面无需手写 JS。
+验证：打开终端（Windows 按 `Win+R` 输入 `cmd` 回车；Mac 在启动台搜索"终端"），输入 `python3 --version`，显示 `Python 3.12.x` 即成功。
 
-后台管理界面不使用自研布局，后续由三方主题库直接适配（推荐 [django-unfold](https://github.com/unfoldadmin/django-unfold)，Tailwind 风格、与本前端栈视觉统一）。
+### 第 2 步：配置环境变量（只有第 1 步验证失败才需要做）
 
-## 目录结构
+- **Windows**：设置 → 搜索"编辑系统环境变量" → 环境变量 → 在"系统变量"里找到 `Path` → 编辑 → 新建，填入 Python 安装目录（一般为 `C:\Users\你的用户名\AppData\Local\Programs\Python\Python312\` 及其下的 `Scripts\` 目录）→ 确定后**重新打开**终端验证
+- **Mac**：终端输入 `echo $SHELL`，若是 zsh 则执行 `echo 'export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc`，再验证
 
-```
-django-scaffold/
-├── manage.py               # 项目管理入口
-├── Makefile                # 一键命令入口（make help 查看全部）
-├── pyproject.toml          # 依赖与工具配置
-├── package.json            # 前端构建链（Tailwind v4 + DaisyUI）
-├── config/                 # 项目级配置（分环境 settings、urls、wsgi/asgi）
-├── utils/                  # 项目级通用能力层（健壮、可扩展、易维护）
-├── templates/              # 前端模板（base / layouts / includes / errors）
-├── static/                 # 静态资源（Tailwind 源码与产物、js、vendor、images）
-├── media/                  # 用户上传文件（不提交真实文件）
-├── scripts/                # 辅助脚本（数据初始化、数据库导入导出）
-├── database/               # 数据库交付材料（初始化/演示数据）
-├── deploy/                 # 部署配置（Dockerfile / compose / entrypoint）
-├── tests/                  # 框架级冒烟测试
-└── .github/workflows/      # CI/CD 模板（按需使用）
-```
+参考教程：<https://www.jb51.net/python/3134481xz.htm>
 
-> `apps/`、`docs/` 属于后续业务建设内容，当前步骤不创建。
+### 第 3 步：安装 uv（Python 包管理器）
 
-## 快速开始（本地开发）
+- 下载地址：<https://docs.astral.sh/uv/getting-started/installation/>
+- **Windows**：在终端执行 `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- **Mac**：在终端执行 `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- 执行 `uv --version` 有版本号输出即成功
 
-前置：已安装 [`uv`](https://docs.astral.sh/uv/) 与 Node.js **>= 20**（仓库含 `.nvmrc`，可用 `nvm use` 切换）。
+### 第 4 步：安装 Node.js 22（前端样式构建用）
+
+- 下载地址：<https://nodejs.org/en/download>，选 **Node.js v22（LTS）**，Windows 下载 `.msi` 一路下一步，Mac 下载 `.pkg` 一路继续（自带 npm，无需单独装）
+- 执行 `node -v` 显示 `v22.x` 即成功
+
+### 第 5 步：安装 Git 和 make
+
+- **Git**（下载代码用）：下载地址 <https://git-scm.com/download/>，一路默认安装
+- **make**（启动命令用）：
+  - **Mac**：系统自带，无需安装（若提示安装 Command Line Tools，终端执行 `xcode-select --install` 按提示来）
+  - **Windows**：安装 [MinGW-w64](https://github.com/niXman/mingw-builds-binaries/releases)（选 `x86_64-...-posix-sjlj-...zip`，解压后把其中 `bin` 目录加入 Path，方法同第 2 步）；执行 `make --version` 有输出即成功
+
+### 第 6 步：获取项目并启动
+
+打开终端，进入项目所在目录后**按顺序**执行：
 
 ```bash
-make install      # 安装 Python + Node 依赖（等价于 uv sync && npm install）
-make env          # 生成 .env（等价于 cp .env.example .env）
-make css          # 构建 Tailwind 样式（等价于 npm run build）
-make migrate      # 数据库迁移（开发默认 SQLite，零配置）
-make init-data    # 初始化超级用户（admin / admin123456，幂等）
-make run          # 启动开发服务器（等价于 uv run python manage.py runserver）
+make env        # 生成配置文件 .env（只需一次）
+make install    # 安装依赖（只需一次，耗时几分钟）
+make migrate    # 初始化数据库（只需一次）
+make init-data  # 写入基础数据，含管理员账号（只需一次）
+make css        # 构建前端样式（只需一次）
+make run        # 启动服务
 ```
 
-开发期样式监听：另开终端执行 `make css-watch`。
+浏览器访问 <http://127.0.0.1:8000> 即可看到系统；后台管理入口为 <http://127.0.0.1:8000/admin>（默认账号 `admin` / `admin123456`，以 `make init-data` 的输出为准）。
 
-验证：
+> 以后每天开发只需执行 `make run` 一条命令。
+> 全部可用命令可在终端执行 `make help` 查看。
 
-- 健康检查：<http://127.0.0.1:8000/healthz/> 返回 `{"status": "ok"}`
-- 后台管理：<http://127.0.0.1:8000/admin/>（使用 `make init-data` 创建的账号登录）
-- 访问任意不存在路径，将看到 DaisyUI 风格的 404 页面（验证模板 + Tailwind 管线）
+---
 
-## 环境变量说明
+## 遇到问题先查这里
 
-参见 `.env.example`。开发环境使用 SQLite 时无需配置数据库；生产环境通过 `DATABASE_URL`
-或 `MYSQL_*` 变量指定 MySQL 连接，并务必设置强随机 `SECRET_KEY` 与正确的 `ALLOWED_HOSTS`。
-本脚手架面向毕设等演示场景，默认纯 HTTP 部署，不含 HTTPS 相关开关。
-
-## 常用命令（Makefile）
-
-| 命令 | 说明 |
+| 现象 | 处理 |
 | --- | --- |
-| `make install` / `make env` | 安装依赖 / 生成 .env |
-| `make run` / `make check` | 启动开发服务器 / 框架自检 |
-| `make css` / `make css-watch` | 构建 / 监听构建 Tailwind 样式 |
-| `make migrate` / `make makemigrations` | 应用 / 生成数据库迁移 |
-| `make init-data` | 初始化基础数据（超级用户，幂等） |
-| `make export-db` / `make import-db` | 导出 / 导入数据库数据（`database/data/`） |
-| `make lint` / `make format` | ruff 规范检查 / 格式化（PEP8） |
-| `make test` | 运行测试（pytest） |
-| `make worker` / `make beat` | 启动 Celery worker / beat 定时调度器（需先配好 `.env` 的 `REDIS_URL`） |
-| `make docker-build` / `make docker-up` / `make docker-down` | 镜像构建 / 容器编排启停 |
-| `make clean` | 清理缓存产物 |
+| `python3` / `uv` / `node` / `make` 提示"不是内部或外部命令 / command not found" | 环境变量没配好，回到对应步骤的第 2 步或检查安装是否完成，**并重新打开终端** |
+| `make` 报 `No rule to make target` | 确认终端当前目录在项目根目录（有 Makefile 的那个文件夹） |
+| Windows 装 make 后仍找不到 | 确认加入 Path 的是 MinGW 的 `bin` 目录且已重开终端 |
+| 页面样式错乱 | 执行 `make css` 后再 `make run` |
+| 端口 8000 被占用 | 先用 `make run` 的窗口 Ctrl+C 关掉旧服务，或重启电脑后重试 |
 
-## 线上部署
-
-部署材料位于 `deploy/`，采用多阶段 Docker 构建（Node 22 阶段编译 Tailwind，Python 阶段运行 Gunicorn），
-数据库使用阿里云 RDS 等第三方 MySQL，静态文件由 WhiteNoise 随应用直接提供（无需 Nginx）：
-
-```bash
-# 语法校验
-docker compose --env-file .env -f deploy/docker-compose.yml config
-# 构建镜像
-make docker-build
-```
-
-`.github/workflows/deploy.yml` 负责构建并推送镜像到阿里云 ACR、更新服务器 `docker-compose.yml`、
-拉取镜像重启并做容器健康检查（不设测试门禁）。镜像构建时会自动将 `.env.example` 复制为 `.env`，
-应用启动时加载其中的配置，服务器无需维护环境变量文件。
-
-## 分步建设规划
-
-1. **基础框架**：工程骨架、通用能力层、模板与静态体系、本地运行与部署能力（已完成）。
-2. **工程化优化**：前端 UI 栈（Tailwind v4 + DaisyUI）、Makefile/脚本、规范集成（本阶段）。
-3. **通用业务模块**：用户认证（`apps/accounts`）、文件管理（`apps/files`）、操作日志（`apps/audit`，装饰器显式埋点、仅后台管理员可见）、消息通知（`apps/notifications`，站内信：定向/全站公告/事件自动通知 + 未读角标）均已完成；权限等分批建设中。
-4. **示例业务模块**：`apps/demo` 端到端验证上述能力边界。
+异步任务、部署等进阶内容见 `docs/` 目录文档。

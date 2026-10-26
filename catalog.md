@@ -199,6 +199,9 @@ django-scaffold/
 │   │   ├── references.md                 # 参考文献
 │   │   └── acknowledgements.md           # 致谢
 │   │
+│   ├── sop/                             # 团队内部 SOP（基座能力操作规范）
+│   │   └── celery-async-tasks.md         # 异步任务与定时任务 SOP（Celery + Redis）
+│   │
 │   └── assets/                           # 文档与论文素材
 │       ├── architecture/                 # 系统架构图
 │       ├── database/                     # 数据库图

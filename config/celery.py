@@ -4,7 +4,7 @@
 - 任务结果：django-celery-results 落库（CELERY_RESULT_BACKEND = "django-db"，Admin 可查）；
 - 各业务 app 的任务文件为 ``apps/<module>/tasks.py``，由 autodiscover_tasks 自动发现。
 
-启动方式见 Makefile（make worker / make beat）与 SOP 文档 docs/README.md。
+启动方式见 Makefile（make worker / make beat
 """
 
 import os
