@@ -47,14 +47,21 @@
 
 ## 四、部署后服务器运维命令
 
-先 SSH 登录服务器并进入部署目录，所有 compose 命令统一写法：
+流水线每次部署会在服务器生成 `deploy/.env`（含 `APP_IMAGE` / `APP_PORT` / `ALLOWED_HOSTS`），
+Docker Compose 会自动读取 compose 文件同目录的 `.env`，因此**手动或中台系统执行命令前
+不需要 export 任何变量**。中台系统的「启用/停用」即直接执行下表中的 up/down 命令。
+
+先 SSH 登录服务器并进入部署目录：
 
 ```bash
 ssh root@服务器IP
 cd /opt/django-scaffold          # 即 DEPLOY_PATH
-export APP_IMAGE=<ACR完整镜像地址:tag>   # 手动重启时需指定镜像，日常可省略
 COMPOSE="docker compose -f deploy/docker-compose.yml"
 ```
+
+> 前提：该用户需执行过 `docker login registry.cn-hangzhou.aliyuncs.com`（流水线部署时
+> 已用同一用户登录过，凭证持久化在 `~/.docker/config.json`）。若中台用另一个系统用户
+> 执行命令，需先用该用户再登录一次，否则拉取私有镜像会报 `pull access denied`。
 
 | 场景 | 命令 |
 | --- | --- |
@@ -63,8 +70,9 @@ COMPOSE="docker compose -f deploy/docker-compose.yml"
 | worker 日志 | `$COMPOSE logs -f --tail=100 worker` |
 | 重启全部服务 | `$COMPOSE up -d --remove-orphans` |
 | 只重启 web | `$COMPOSE restart web` |
-| 停止全部 | `$COMPOSE down` |
-| 手动拉新镜像并重启（等价于流水线） | `$COMPOSE pull && $COMPOSE up -d` |
+| 手动拉新镜像并重启（中台「启用」等价于此） | `$COMPOSE pull && $COMPOSE up -d` |
+| 直接启动（镜像已在本机，中台「启用」） | `$COMPOSE up -d` |
+| 停止全部（中台「停用」） | `$COMPOSE down` |
 | 进入容器内执行命令（如 Django shell） | `docker compose -f deploy/docker-compose.yml exec web python manage.py shell` |
 | 磁盘/镜像占用清理 | `docker image prune -f` |
 
@@ -75,6 +83,7 @@ COMPOSE="docker compose -f deploy/docker-compose.yml"
 
 | 现象 | 原因与处理 |
 | --- | --- |
+| `docker compose up -d` 报 `pull access denied for registry.cn-hangzhou.aliyuncs.com/your-namespace/...`，worker/beat 报 `context canceled` | 服务器 `deploy/.env` 缺失或内容不对，compose 回退到了占位镜像地址（`your-namespace` 不存在）。确认跑过一次流水线部署使其生成 `.env`，或手动写入真实 `APP_IMAGE`；`context canceled` 只是拉取失败后的连带表现。若 `.env` 正常但仍 denied，则是当前用户没登录过 ACR，`docker login` 一次即可 |
 | 流水线报 `SSH_USER 为空或含非法字符` | Secrets 值里混了空格/换行或写成了 `root@host`，只填用户名 |
 | `SSH 连接失败` | 公钥没加到服务器 `authorized_keys`；报错信息里会打印私钥对应公钥指纹，与服务器上的比对 |
 | 构建推送 ACR 失败 `denied` | `ACR_USERNAME/ACR_PASSWORD` 错误或凭证过期，去 ACR 控制台重设访问凭证 |

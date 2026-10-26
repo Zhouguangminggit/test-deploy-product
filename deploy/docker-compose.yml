@@ -9,15 +9,17 @@
 #
 # 服务器目录约定（DEPLOY_PATH）：
 #   deploy/docker-compose.yml     # 由流水线自动更新
+#   deploy/.env                   # 由流水线自动生成（APP_IMAGE / APP_PORT / ALLOWED_HOSTS），
+#                                 #   compose 自动读取，因此中台系统/人工 SSH 无需 export 任何变量
 #
-# 手动操作（需提前在 shell 中导出 APP_IMAGE，可选 APP_PORT / ALLOWED_HOSTS）：
-#   export APP_IMAGE=... APP_PORT=8004 ALLOWED_HOSTS=43.143.145.111
+# 手动操作（首次需先 docker login <ACR地址>，私有仓库拉取凭证按用户持久化）：
 #   docker compose -f deploy/docker-compose.yml pull
 #   docker compose -f deploy/docker-compose.yml up -d
 
 services:
   web:
-    # 由 CI 注入本次提交对应的 ACR 镜像地址
+    # 优先取 deploy/.env（流水线生成）中的本次镜像地址；未提供时回退占位地址，
+    # 占位地址不可拉取，仅用于变量未设置时快速暴露配置缺失
     image: ${APP_IMAGE:-registry.cn-hangzhou.aliyuncs.com/your-namespace/django-scaffold:latest}
     pull_policy: always
     restart: unless-stopped
