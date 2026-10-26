@@ -41,7 +41,12 @@ DJANGO_APPS = [
 ]
 
 # 第三方应用（后续步骤按需追加，如 django 扩展库）
-THIRD_PARTY_APPS: list[str] = []
+# - django_celery_beat：周期任务存库，Admin 动态管理（DatabaseScheduler）；
+# - django_celery_results：任务结果落库，Admin 可查执行记录。
+THIRD_PARTY_APPS: list[str] = [
+    "django_celery_beat",
+    "django_celery_results",
+]
 
 # 项目本地应用：utils 提供 templatetags 等通用能力；accounts 用户账户；files 文件管理；audit 操作日志；notifications 消息通知
 LOCAL_APPS = [
@@ -153,6 +158,21 @@ LOGOUT_REDIRECT_URL = "/"
 # 默认输出到控制台；生产环境在 prod.py 按需切换为 SMTP。
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@example.com")
+
+# ----------------------------- 异步任务（Celery + Redis）-----------------------------
+# Redis 同时作为 broker 与定时任务发布通道；任务结果走 django-db 落库（Admin 可查）。
+# 环境差异：dev 默认连团队共享开发 Redis（db1），prod 由环境变量注入云 Redis 内网地址。
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = "django-db"
+# 关闭 Redis result key 缓存，减轻云 Redis 压力（结果以库表为准）
+CELERY_RESULT_CACHE = None
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_TASK_TRACK_STARTED = True
+# 单个 worker 进程不预取多条，避免长任务阻塞队列；每 50 个任务重启子进程防内存泄漏
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 50
 
 # ----------------------------- 日志（Loguru）-----------------------------
 # 统一后端日志出口为 Loguru：

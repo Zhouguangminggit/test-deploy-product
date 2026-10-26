@@ -16,3 +16,9 @@ try:
     pymysql.install_as_MySQLdb()
 except ImportError:  # pragma: no cover - 最小化环境下未安装 PyMySQL 时忽略
     pass
+
+# 确保进程（gunicorn / manage.py / celery）导入本包时 Celery 应用已创建，
+# 任务注册与共享状态（shared_task）按 config.celery.app 运行。
+from .celery import app as celery_app  # noqa: E402
+
+__all__ = ("celery_app",)

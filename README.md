@@ -17,6 +17,7 @@
 | 前端样式 | Tailwind CSS v4 + DaisyUI 5 | npm 构建，产物输出到 `static/css/dist/` |
 | 前端交互 | Alpine.js 3 + HTMX 2 | vendor 本地引入，无需构建 |
 | 代码规范 | ruff（PEP8） | `make lint` / `make format` |
+| 异步任务 | Celery + Redis（云托管） | 耗时任务异步化；django-celery-beat（定时任务 Admin 管理）+ django-celery-results（结果落库），见 `docs/README.md` |
 | 部署 | Docker + Gunicorn + WhiteNoise（ACR 镜像 + RDS 数据库） | 见 `deploy/` |
 
 ## 前端 UI 策略
@@ -91,6 +92,7 @@ make run          # 启动开发服务器（等价于 uv run python manage.py ru
 | `make export-db` / `make import-db` | 导出 / 导入数据库数据（`database/data/`） |
 | `make lint` / `make format` | ruff 规范检查 / 格式化（PEP8） |
 | `make test` | 运行测试（pytest） |
+| `make worker` / `make beat` | 启动 Celery worker / beat 定时调度器（需先配好 `.env` 的 `REDIS_URL`） |
 | `make docker-build` / `make docker-up` / `make docker-down` | 镜像构建 / 容器编排启停 |
 | `make clean` | 清理缓存产物 |
 

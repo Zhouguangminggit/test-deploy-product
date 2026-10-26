@@ -172,14 +172,10 @@ django-scaffold/
 │   │
 │   ├── project/                          # 项目说明文档
 │   │   ├── introduction.md               # 项目简介
-│   │   ├── functional-description.md      # 功能说明
+│   │   ├── functional-description.md      # 功能说明（包含基础、核心、创新功能）
 │   │   ├── technology-stack.md            # 技术栈说明
 │   │   └── system-architecture.md         # 系统架构说明
 │   │
-│   ├── database/                         # 数据库设计文档
-│   │   ├── database-design.md             # 数据库设计说明
-│   │   ├── table-description.md            # 数据表字段说明
-│   │   └── er-diagram.png                 # 文档使用的 ER 图
 │   │
 │   ├── deployment/                       # 部署文档
 │   │   ├── local-deployment.md            # 本地部署说明
@@ -192,7 +188,7 @@ django-scaffold/
 │   │   ├── chapter-02-related-technology.md
 │   │   │                                  # 第二章：相关技术介绍
 │   │   ├── chapter-03-system-analysis.md
-│   │   │                                  # 第三章：系统分析
+│   │   │                                  # 第三章：需求分析
 │   │   ├── chapter-04-system-design.md
 │   │   │                                  # 第四章：系统设计
 │   │   ├── chapter-05-system-implementation.md

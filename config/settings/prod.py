@@ -59,6 +59,12 @@ EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 
+# ----------------------------- 异步任务（Celery）-----------------------------
+# 生产使用阿里云托管 Redis：REDIS_URL 经镜像内 .env / CI Secret 注入内网连接地址，
+# 形如 redis://:密码@实例地址:6379/0（见 .env.example 说明）。
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+CELERY_BROKER_URL = REDIS_URL
+
 # ----------------------------- 日志（Loguru）-----------------------------
 # 生产默认 INFO 级别、仅输出到控制台（stderr），交由 Docker / 日志采集系统统一收集；
 # 如需落盘，设置环境变量 LOG_DIR 并确保容器已挂载对应卷（文件按日轮转、保留 14 天、zip 归档）。

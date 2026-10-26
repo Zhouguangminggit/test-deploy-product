@@ -96,6 +96,18 @@ def _unfold_sidebar_navigation() -> list[dict[str, Any]]:
                     "link": reverse_lazy("admin:notifications_message_changelist"),
                     "permission": _has_perm("notifications.view_message"),
                 },
+                {
+                    "title": "定时任务",
+                    "icon": "event",
+                    "link": reverse_lazy("admin:django_celery_beat_periodictask_changelist"),
+                    "permission": _has_perm("django_celery_beat.view_periodictask"),
+                },
+                {
+                    "title": "任务结果",
+                    "icon": "task",
+                    "link": reverse_lazy("admin:django_celery_results_taskresult_changelist"),
+                    "permission": _has_perm("django_celery_results.view_taskresult"),
+                },
             ],
         },
     ]

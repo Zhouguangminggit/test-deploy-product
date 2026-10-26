@@ -7,11 +7,15 @@ PYTHON := $(UV) run python
 MANAGE := $(PYTHON) manage.py
 COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
 APP_IMAGE ?= django-scaffold:local
+# Celery 进程默认用 dev 配置（与 manage.py runserver 同源，读 .env 的 REDIS_URL）
+DJANGO_SETTINGS_MODULE ?= config.settings.dev
+export DJANGO_SETTINGS_MODULE
 
 .DEFAULT_GOAL := help
 
 .PHONY: help install env run check css css-watch migrate makemigrations superuser \
 	init-data export-db import-db lint format test \
+	worker beat \
 	docker-build docker-up docker-down clean
 
 help: ## 显示全部可用命令
@@ -72,6 +76,14 @@ format: ## 代码格式化并自动修复
 
 test: ## 运行测试
 	$(UV) run pytest
+
+# ------------------------------ 异步任务（Celery）------------------------------
+
+worker: ## 启动 Celery worker（本地开发；-P solo 避免 macOS 下 prefork 子进程报错）
+	$(PYTHON) -m celery -A config worker -l INFO -P solo
+
+beat: ## 启动 Celery beat 定时调度器（周期任务计划读自 Admin 数据库）
+	$(PYTHON) -m celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
 # ------------------------------ 部署 ------------------------------
 

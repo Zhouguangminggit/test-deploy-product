@@ -18,6 +18,11 @@ dependencies = [
     "loguru>=0.7,<1.0",
     "django-unfold>=0.110.0",
     "django-simpleui>=2026.1.13",
+    # 异步任务与定时任务：Celery + Redis（broker），周期任务 Admin 管理、结果落库
+    "celery>=5.4,<6.0",
+    "redis>=5.0,<6.0",
+    "django-celery-beat>=2.7,<3.0",
+    "django-celery-results>=2.6,<3.0",
 ]
 
 [dependency-groups]

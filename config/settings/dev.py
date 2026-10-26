@@ -19,6 +19,15 @@ DATABASES = {
     }
 }
 
+# 异步任务（Celery）：开发默认连团队共享 Redis 实例（约定用 db1，与生产 db0 区隔）。
+# 将 .env 的 REDIS_URL 填为形如 redis://:密码@共享实例地址:6379/1；
+# 未配置时回退本机 redis://localhost:6379/1（worker 未启动不影响 Web 进程存活）。
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/1")
+CELERY_BROKER_URL = REDIS_URL
+# eager（同步）执行时也回写结果到 backend：仅当 task_always_eager=True 时生效（pytest 全局夹具），
+# 真实 worker 走异步投递不受影响；便于测试中用 AsyncResult(task_id) 回查 django-db 落库结果。
+CELERY_TASK_STORE_EAGER_RESULT = True
+
 # 开发环境默认 DEBUG 级别，可见业务调试日志（utils logger）；
 # django 内部 logger 阈值不低于 INFO、django.utils.autoreload 固定 WARNING、
 # django.db.backends 固定 INFO、django.server 固定 WARNING（见 build_logging_config），

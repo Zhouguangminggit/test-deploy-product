@@ -27,25 +27,30 @@ django.setup()
 from django.contrib.auth import get_user_model  # noqa: E402
 
 
+def ensure_superuser(username: str, password: str, email: str) -> None:
+    """幂等创建超级用户。"""
+    user_model = get_user_model()
+    if user_model.objects.filter(username=username).exists():
+        print(f"用户 {username} 已存在，跳过创建。")
+        return
+
+    user_model.objects.create_superuser(
+        username=username,
+        password=password,
+        email=email,
+    )
+    print(f"超级用户已创建：{username} / {password}")
+    print("可前往 /admin/ 登录后台。")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="初始化项目基础数据（超级用户等）")
+    parser = argparse.ArgumentParser(description="初始化项目基础数据（超级用户）")
     parser.add_argument("--username", default="admin", help="管理员用户名（默认 admin）")
     parser.add_argument("--password", default="admin123456", help="管理员密码（默认 admin123456）")
     parser.add_argument("--email", default="admin@example.com", help="管理员邮箱")
     args = parser.parse_args()
 
-    user_model = get_user_model()
-    if user_model.objects.filter(username=args.username).exists():
-        print(f"用户 {args.username} 已存在，跳过创建。")
-        return
-
-    user_model.objects.create_superuser(
-        username=args.username,
-        password=args.password,
-        email=args.email,
-    )
-    print(f"超级用户已创建：{args.username} / {args.password}")
-    print("可前往 /admin/ 登录后台。")
+    ensure_superuser(args.username, args.password, args.email)
 
 
 if __name__ == "__main__":

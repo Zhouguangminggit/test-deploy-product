@@ -1,9 +1,11 @@
 # 生产部署编排（不含数据库与 Nginx）。
-# - 数据库使用阿里云 RDS 等第三方 MySQL；
+# - 数据库使用阿里云 RDS 等第三方 MySQL；中间件 Redis 使用阿里云托管实例，
+#   经镜像内 .env 的 REDIS_URL 注入，编排内仅 web / worker / beat 三个应用进程；
 # - 静态文件由 WhiteNoise 直接随应用提供（collectstatic 产物），媒体文件由应用返回；
 # - 镜像由 CI 构建并推送至阿里云 ACR，服务器只拉取启动，不做本地构建；
 # - 运行时配置来自镜像内的 /app/.env（构建时由 .env.example 自动复制）；
-#   与服务器相关的 ALLOWED_HOSTS / APP_PORT 由 CI 在宿主机环境导出后注入。
+#   与服务器相关的 ALLOWED_HOSTS / APP_PORT 由 CI 在宿主机环境导出后注入；
+# - 数据库迁移仅由 web 入口脚本执行，worker/beat 覆盖 entrypoint 不跑迁移，避免并发冲突。
 #
 # 服务器目录约定（DEPLOY_PATH）：
 #   deploy/docker-compose.yml     # 由流水线自动更新
@@ -44,6 +46,38 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+
+  # Celery worker：消费 Redis 队列执行异步任务（与 web 共用镜像与 .env 配置）
+  worker:
+    image: ${APP_IMAGE:-registry.cn-hangzhou.aliyuncs.com/your-namespace/django-scaffold:latest}
+    pull_policy: always
+    restart: unless-stopped
+    # 覆盖镜像入口（entrypoint.sh 会跑迁移+Gunicorn），直接起 worker
+    entrypoint: []
+    command: celery -A config worker -l INFO -c ${CELERY_CONCURRENCY:-2}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      SKIP_DB_WAIT: "1"
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+    volumes:
+      - media_files:/app/media
+    # web 先完成 migrate，worker/beat 再启动
+    depends_on:
+      - web
+
+  # Celery beat：周期任务调度器，从数据库（django-celery-beat）读取 Admin 配置的计划
+  beat:
+    image: ${APP_IMAGE:-registry.cn-hangzhou.aliyuncs.com/your-namespace/django-scaffold:latest}
+    pull_policy: always
+    restart: unless-stopped
+    entrypoint: []
+    command: celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      SKIP_DB_WAIT: "1"
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+    depends_on:
+      - web
 
 volumes:
   media_files:
