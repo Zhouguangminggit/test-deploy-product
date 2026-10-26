@@ -9,6 +9,7 @@ from pathlib import Path
 
 import environ
 
+from utils.admin_theme import build_third_party_apps, build_theme_settings, validate_admin_ui
 from utils.log import build_logging_config
 
 # 项目根目录：config/settings/base.py -> 上溯三级
@@ -51,7 +52,10 @@ LOCAL_APPS = [
     "apps.notifications",
 ]
 
-INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+ADMIN_UI = validate_admin_ui(env("ADMIN_UI", default="unfold"))
+ADMIN_THEME_APPS = build_third_party_apps(ADMIN_UI)
+
+INSTALLED_APPS = ADMIN_THEME_APPS + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 # 自定义用户模型（accounts.User 继承 AbstractUser）。
 # 必须在首次迁移前设置；label 为 "accounts"，故写 "accounts.User"。
@@ -159,3 +163,18 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@example.com")
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")
 LOG_DIR = env("LOG_DIR", default="")
 LOGGING = build_logging_config(LOG_LEVEL)
+
+# ----------------------------- 后台主题全局配置 -----------------------------
+# 依据 ADMIN_UI 合并对应主题的完整配置：
+# - unfold：注入 UNFOLD dict（品牌 / 侧边栏导航 / 顶部栏开关 / 颜色主题 / 登录页）；
+# - simpleui：注入 SIMPLEUI_* 平铺键（基础配置 + 关闭分析上报等净化项）。
+# 具体键值定义见 utils/admin_theme.py，站点品牌联动 SITE_NAME / SITE_LOGO。
+globals().update(
+    build_theme_settings(
+        ADMIN_UI,
+        site_name=SITE_NAME,
+        site_logo=SITE_LOGO,
+        debug=DEBUG,
+        static_url=STATIC_URL,
+    )
+)

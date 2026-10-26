@@ -199,6 +199,8 @@ dependencies = [
     { name = "cryptography" },
     { name = "django" },
     { name = "django-environ" },
+    { name = "django-simpleui" },
+    { name = "django-unfold" },
     { name = "gunicorn" },
     { name = "loguru" },
     { name = "pillow" },
@@ -218,6 +220,8 @@ requires-dist = [
     { name = "cryptography", specifier = ">=42.0" },
     { name = "django", specifier = ">=5.2,<5.3" },
     { name = "django-environ", specifier = ">=0.11,<1.0" },
+    { name = "django-simpleui", specifier = ">=2026.1.13" },
+    { name = "django-unfold", specifier = ">=0.110.0" },
     { name = "gunicorn", specifier = ">=21.2" },
     { name = "loguru", specifier = ">=0.7,<1.0" },
     { name = "pillow", specifier = ">=10.4" },
@@ -230,6 +234,27 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-django", specifier = ">=4.8" },
     { name = "ruff", specifier = ">=0.6" },
+]
+
+[[package]]
+name = "django-simpleui"
+version = "2026.1.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f4/c2/b94aec95e96a74b9b075baa3d70a5600d2f56136b051999076136564677c/django_simpleui-2026.1.13.tar.gz", hash = "sha256:c417bc462020c5d05ddd518593b3d6fd1191d226c3b14a9593f3d654a12d2fbe", size = 6483742, upload-time = "2026-01-13T06:28:46.694Z" }
+
+[[package]]
+name = "django-unfold"
+version = "0.110.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/45/8fed87cc80291ab694c46fa3c113dff3e25cc7b1de843f5c334679f9128d/django_unfold-0.110.0.tar.gz", hash = "sha256:cd0bbfd3b96454b6e6eccea98996f9de634e1aa08956807943011b12f2fbcdf2", size = 1172280, upload-time = "2026-10-13T06:47:18.085Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2b/d1/d9f998dcd02fbdcc5a63836ac3025e170f3a99cfdc0b64efe7a4ab1e861c/django_unfold-0.110.0-py3-none-any.whl", hash = "sha256:5b20e87cf389376398dee19f9e168ad1f8c4cd5e53850b4b7d38bb1e17c14f9a", size = 1301431, upload-time = "2026-10-13T06:47:16.414Z" },
 ]
 
 [[package]]

@@ -49,21 +49,6 @@ django-scaffold/
 │   │           ├── register.html
 │   │           └── profile.html
 │   │
-│   ├── permissions/                      # 权限管理模块
-│   │   ├── __init__.py
-│   │   ├── apps.py
-│   │   ├── models.py                      # 角色、菜单、权限模型（按需）
-│   │   ├── forms.py                       # 权限管理表单
-│   │   ├── urls.py
-│   │   ├── views.py
-│   │   ├── services.py                    # 角色、权限分配逻辑
-│   │   ├── selectors.py                   # 权限查询逻辑
-│   │   ├── admin.py
-│   │   ├── migrations/
-│   │   ├── tests/
-│   │   │   └── __init__.py
-│   │   └── templates/
-│   │       └── permissions/               # 权限管理页面
 │   │
 │   ├── files/                            # 文件管理模块
 │   │   ├── __init__.py

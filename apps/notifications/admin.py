@@ -11,6 +11,8 @@ from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
 
+from utils.admin_theme import ModelAdmin
+
 from .models import Message, MessageAudience, MessageRecipient
 
 User = get_user_model()
@@ -53,7 +55,7 @@ class MessageAdminForm(forms.ModelForm):
 
 
 @admin.register(Message)
-class MessageAdmin(admin.ModelAdmin):
+class MessageAdmin(ModelAdmin):
     """消息后台。"""
 
     form = MessageAdminForm
@@ -92,7 +94,7 @@ class MessageAdmin(admin.ModelAdmin):
 
 
 @admin.register(MessageRecipient)
-class MessageRecipientAdmin(admin.ModelAdmin):
+class MessageRecipientAdmin(ModelAdmin):
     """收件记录后台（只读查看）。"""
 
     list_display = ("message", "user", "is_read", "deleted", "created_at")

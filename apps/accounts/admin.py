@@ -1,8 +1,9 @@
 """用户账户 Admin 配置。"""
 
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
+
+from utils.admin_theme import UserAdmin as BaseUserAdmin
 
 from .models import User
 

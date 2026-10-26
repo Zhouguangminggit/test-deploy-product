@@ -6,11 +6,13 @@
 
 from django.contrib import admin
 
+from utils.admin_theme import ModelAdmin
+
 from .models import OperationLog
 
 
 @admin.register(OperationLog)
-class OperationLogAdmin(admin.ModelAdmin):
+class OperationLogAdmin(ModelAdmin):
     """操作日志后台：只读列表 + 详情。"""
 
     list_display = ("created_at", "username", "action", "module", "object_repr", "ip_address")
