@@ -96,7 +96,7 @@ jobs:
           ref: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
 
       # job 级 env 不能引用 github 上下文，这里把非敏感变量统一解析进 GITHUB_ENV 供全 job 复用；
-      # 私钥/口令本体与 ACR 密码仍走 step 级 env，不落 GITHUB_ENV
+      # 私钥/口令本体仍走后续 step 级 env，不落 GITHUB_ENV
       - name: Resolve variables (inputs 优先，Secrets 兜底)
         run: |
           set -eu
@@ -172,6 +172,8 @@ jobs:
           ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" "mkdir -p '${DEPLOY_PATH}/deploy'"
           scp $SSH_OPTS deploy/docker-compose.yml "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/deploy/docker-compose.yml"
 
+      # 远端脚本中的 ${{ ... }} 全部由 runner 侧展开为字面量后再下发（与原流水线一致），
+      # 不依赖 appleboy envs 转发，规避 drone-ssh 未导出变量导致的 unbound variable
       - name: Pull, restart and health check
         uses: appleboy/ssh-action@v1
         with:
@@ -180,65 +182,53 @@ jobs:
           key: ${{ github.event.inputs.SSH_KEY || secrets.SSH_KEY }}
           passphrase: ${{ github.event.inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
           port: ${{ env.SSH_PORT }}
-          # 远端脚本仅引用 envs 注入的变量（不含 ${{ }}, 避免 runner 二次展开）
-          envs: REGISTRY USERNAME PASSWORD NAMESPACE IMAGE_NAME IMAGE_TAG RUN_PORT RUN_HOST DEPLOY_PATH COMPOSE_SERVICE
           script: |
             set -eu
 
-            cd "${DEPLOY_PATH}"
+            cd "${{ env.DEPLOY_PATH }}"
 
-            # ACR 账号密码等只在 runner 侧准备好，SSH 远端脚本无法引用 Secrets，
-            # 因此这里用 environment 注入的变量在远端拼好镜像地址、端口和域名，
-            # 再写入服务器 deploy/.env，供服务器侧（含中台系统/人工 SSH）自动读取
-            REPO="${REGISTRY}/${NAMESPACE}/${IMAGE_NAME}"
-            ALLOWED="${RUN_HOST},localhost,127.0.0.1"
+            # ACR 账号密码等 Secrets/inputs 只在 runner 侧展开，SSH 远端脚本无法引用，
+            # 因此这里先在 runner 上拼好镜像地址、端口和域名，再写入服务器
+            # deploy/.env，供服务器侧（含中台系统/人工 SSH）执行 compose 时自动读取
+            REPO="${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}"
+            ALLOWED="${{ env.APP_HOST }},localhost,127.0.0.1"
             COMPOSE="docker compose -f deploy/docker-compose.yml"
 
             echo "==> 登录 ACR"
-            echo "${PASSWORD}" | docker login "${REGISTRY}" -u "${USERNAME}" --password-stdin
+            echo "${{ github.event.inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}" | docker login "${{ env.ACR_REGISTRY }}" \
+              -u "${{ github.event.inputs.ACR_USERNAME || secrets.ACR_USERNAME }}" --password-stdin
 
             # 落地 compose 环境变量文件：APP_IMAGE 固定 :latest（CI 每次部署都会
             # 推送最新 sha 镜像到 :latest），中台仅执行 up -d 也能拉到最新版本；
             # 本次部署仍显式使用 sha tag，保证与流水线产物严格对应
             # 用 printf 而非 heredoc，避免 YAML 块缩进被写进 .env 行首
             printf 'APP_IMAGE=%s\nAPP_PORT=%s\nALLOWED_HOSTS=%s\n' \
-              "${REPO}:latest" "${RUN_PORT}" "${ALLOWED}" > deploy/.env
+              "${REPO}:latest" "${{ env.APP_PORT }}" "${ALLOWED}" > deploy/.env
 
-            echo "==> 拉取镜像 ${REPO}:${IMAGE_TAG}"
-            APP_IMAGE="${REPO}:${IMAGE_TAG}" ALLOWED_HOSTS="${ALLOWED}" $COMPOSE pull "${COMPOSE_SERVICE}"
+            echo "==> 拉取镜像 ${REPO}:${{ github.sha }}"
+            APP_IMAGE="${REPO}:${{ github.sha }}" ALLOWED_HOSTS="${ALLOWED}" $COMPOSE pull "${{ env.COMPOSE_SERVICE }}"
 
             echo "==> 重启服务"
-            APP_IMAGE="${REPO}:${IMAGE_TAG}" ALLOWED_HOSTS="${ALLOWED}" \
+            APP_IMAGE="${REPO}:${{ github.sha }}" ALLOWED_HOSTS="${ALLOWED}" \
               $COMPOSE up -d --remove-orphans
 
             echo "==> 等待健康检查通过"
             for i in $(seq 1 30); do
-              cid=$($COMPOSE ps -q "${COMPOSE_SERVICE}")
-              status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)
+              cid=$($COMPOSE ps -q "${{ env.COMPOSE_SERVICE }}")
+              status=$(docker inspect -f "{{.State.Health.Status}}" "$cid" 2>/dev/null || echo starting)
               echo "第 ${i} 次检查：${status}"
               if [ "$status" = "healthy" ]; then
                 echo "部署成功"
                 exit 0
               fi
               if [ "$status" = "unhealthy" ]; then
-                $COMPOSE logs --tail=100 "${COMPOSE_SERVICE}"
+                $COMPOSE logs --tail=100 "${{ env.COMPOSE_SERVICE }}"
                 echo "健康检查失败"
                 exit 1
               fi
               sleep 5
             done
 
-            $COMPOSE logs --tail=100 "${COMPOSE_SERVICE}"
+            $COMPOSE logs --tail=100 "${{ env.COMPOSE_SERVICE }}"
             echo "健康检查超时"
             exit 1
-        env:
-          REGISTRY: ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
-          USERNAME: ${{ github.event.inputs.ACR_USERNAME || secrets.ACR_USERNAME }}
-          PASSWORD: ${{ github.event.inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
-          NAMESPACE: ${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          IMAGE_TAG: ${{ github.sha }}
-          RUN_PORT: ${{ env.APP_PORT }}
-          RUN_HOST: ${{ env.APP_HOST }}
-          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-          COMPOSE_SERVICE: ${{ env.COMPOSE_SERVICE }}
