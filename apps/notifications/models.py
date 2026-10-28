@@ -78,7 +78,9 @@ class Message(models.Model):
 class MessageRecipient(models.Model):
     """用户对某条消息的收件记录（承载已读 / 删除状态）。"""
 
-    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="recipient_set", verbose_name="消息")
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="recipient_set", verbose_name="消息"
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

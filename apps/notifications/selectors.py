@@ -15,7 +15,11 @@ def inbox(user, *, only_unread: bool = False) -> QuerySet[MessageRecipient]:
 
 def get_for_user(user, pk: int) -> MessageRecipient | None:
     """获取属于该用户且未删除的收件记录；否则返回 None。"""
-    return MessageRecipient.objects.filter(pk=pk, user=user, deleted=False).select_related("message").first()
+    return (
+        MessageRecipient.objects.filter(pk=pk, user=user, deleted=False)
+        .select_related("message")
+        .first()
+    )
 
 
 def unread_count(user) -> int:

@@ -94,10 +94,6 @@ def profile_view(request: HttpRequest) -> HttpResponse:
     context = {
         "profile_form": profile_form,
         "password_form": password_form,
-        "profile_messages": [
-            error
-            for errors in profile_form.errors.values()
-            for error in errors
-        ],
+        "profile_messages": [error for errors in profile_form.errors.values() for error in errors],
     }
     return render(request, "accounts/profile.html", context)

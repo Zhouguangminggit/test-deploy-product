@@ -10,8 +10,8 @@ from django.urls import reverse
 
 from utils.admin_theme import (
     DEFAULT_ADMIN_UI,
-    build_third_party_apps,
     build_theme_settings,
+    build_third_party_apps,
     validate_admin_ui,
 )
 
@@ -21,10 +21,10 @@ from utils.admin_theme import (
     [
         ("unfold", "unfold"),
         ("simpleui", "simpleui"),
-        ("UNFOLD", "unfold"),        # 大小写不敏感
+        ("UNFOLD", "unfold"),  # 大小写不敏感
         ("  simpleui  ", "simpleui"),  # 去除首尾空白
-        ("", DEFAULT_ADMIN_UI),       # 空值回退默认
-        (None, DEFAULT_ADMIN_UI),     # 未设置回退默认
+        ("", DEFAULT_ADMIN_UI),  # 空值回退默认
+        (None, DEFAULT_ADMIN_UI),  # 未设置回退默认
     ],
 )
 def test_validate_admin_ui_ok(raw, expected):

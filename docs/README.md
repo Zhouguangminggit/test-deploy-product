@@ -10,7 +10,8 @@ docs/
 │   ├── introduction.md       # 项目简介
 │   ├── functional-description.md   # 功能说明（基础、核心、创新功能）
 │   ├── technology-stack.md   # 技术栈说明
-│   └── system-architecture.md      # 系统架构说明
+│   ├── catalog-architecture.md     # 目录架构说明
+│   └── seed-data-guide.md   # 种子数据填充指南
 ├── deployment/               # 部署文档
 │   ├── local-deployment.md   # 本地部署说明
 │   └── production-deployment.md    # 生产部署说明

@@ -12,7 +12,15 @@ from .models import User
 class UserAdmin(BaseUserAdmin):
     """自定义用户后台：在内置基础上补充昵称、头像、手机号。"""
 
-    list_display = ("avatar_thumb", "username", "nickname", "phone", "email", "is_staff", "date_joined")
+    list_display = (
+        "avatar_thumb",
+        "username",
+        "nickname",
+        "phone",
+        "email",
+        "is_staff",
+        "date_joined",
+    )
     list_filter = ("is_staff", "is_superuser", "groups")
     search_fields = ("username", "nickname", "phone", "email")
     ordering = ("-date_joined",)
@@ -26,5 +34,7 @@ class UserAdmin(BaseUserAdmin):
     def avatar_thumb(self, obj: User) -> str:
         """列表页头像缩略图；无头像时显示占位符。"""
         if obj.avatar:
-            return format_html('<img src="{}" style="height:32px;width:32px;border-radius:50%;" />', obj.avatar.url)
+            return format_html(
+                '<img src="{}" style="height:32px;width:32px;border-radius:50%;" />', obj.avatar.url
+            )
         return "—"

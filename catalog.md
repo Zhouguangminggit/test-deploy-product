@@ -109,6 +109,7 @@ django-scaffold/
 │   ├── date_time.py                      # 日期时间处理工具
 │   ├── file_helpers.py                   # 文件名、文件大小等处理
 │   ├── image_helpers.py                  # 图片处理工具
+│   ├── resource_fetcher.py               # Pixabay 图片资源获取与 Django 集成
 │   ├── security.py                       # 安全相关辅助方法
 │   │
 │   └── templatetags/                     # Django 自定义模板标签
@@ -209,8 +210,19 @@ django-scaffold/
 │
 ├── scripts/                              # 项目辅助脚本
 │   ├── init_data.py                      # 初始化数据脚本
+│   ├── seed_data.py                      # 种子数据填充主入口
 │   ├── export_database.py                # 数据导出脚本
-│   └── import_database.py                # 数据导入脚本
+│   ├── import_database.py                # 数据导入脚本
+│   │
+│   └── _seed_lib/                        # 种子数据内部工具
+│       ├── __init__.py
+│       ├── pixabay_client.py             # Pixabay API 客户端
+│       └── engine.py                     # 数据填充引擎
+│
+├── seeds/                                # 种子数据配置（每个业务模块一个文件）
+│   ├── __init__.py                       # 自动发现机制
+│   ├── _template.py                      # 配置模板（新模块复制此文件）
+│   └── demo_marketplace.py               # 示例：校园二手交易
 │
 ├── deploy/                               # 部署配置
 │   ├── Dockerfile                        # Docker 镜像构建文件（多阶段：前端构建 + 运行时）

@@ -56,7 +56,9 @@ def test_publish_announcement_expands_to_all_active_users(alice, bob):
     inactive = User.objects.create_user(username="gone", password=PASSWORD, is_active=False)
     message = publish_announcement("公告", "全站公告内容")
     assert message.audience == MessageAudience.ANNOUNCEMENT
-    recipients = set(MessageRecipient.objects.filter(message=message).values_list("user_id", flat=True))
+    recipients = set(
+        MessageRecipient.objects.filter(message=message).values_list("user_id", flat=True)
+    )
     assert recipients == {alice.pk, bob.pk, admin.pk}
     assert inactive.pk not in recipients
 

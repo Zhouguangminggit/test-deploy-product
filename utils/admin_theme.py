@@ -141,7 +141,11 @@ def _build_unfold_settings(
     logo = None
     icon = "dashboard"
     if site_logo:
-        logo_url = site_logo if site_logo.startswith(("http://", "https://", "/")) else f"{static_url}{site_logo}"
+        logo_url = (
+            site_logo
+            if site_logo.startswith(("http://", "https://", "/"))
+            else f"{static_url}{site_logo}"
+        )
         logo = {"light": logo_url, "dark": logo_url}
 
     config: dict[str, Any] = {

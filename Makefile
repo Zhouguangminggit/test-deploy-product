@@ -14,7 +14,9 @@ export DJANGO_SETTINGS_MODULE
 .DEFAULT_GOAL := help
 
 .PHONY: help install env run check css css-watch migrate makemigrations superuser \
-	init-data export-db import-db lint format test \
+	init-data export-db import-db \
+	seed seed-no-images seed-module seed-list seed-prod \
+	lint format test \
 	worker beat \
 	docker-build docker-up docker-down clean
 
@@ -64,6 +66,23 @@ export-db: ## 导出数据到 database/data/
 
 import-db: ## 导入 database/data/ 最近 fixture（FILE=路径 可指定，默认跳过确认）
 	$(PYTHON) scripts/import_database.py $(if $(FILE),--file $(FILE),) --yes
+
+# ------------------------------ 种子数据 ------------------------------
+
+seed: ## 填充业务种子数据（含 Pixabay 图片下载）
+	$(PYTHON) scripts/seed_data.py
+
+seed-no-images: ## 填充种子数据（跳过图片下载，加速开发调试）
+	$(PYTHON) scripts/seed_data.py --no-images
+
+seed-module: ## 填充指定模块种子数据（MODULE=模块名）
+	$(PYTHON) scripts/seed_data.py --module $(MODULE)
+
+seed-list: ## 列出所有可用种子模块
+	$(PYTHON) scripts/seed_data.py --list
+
+seed-prod: ## 生产环境填充种子数据（Docker 容器内执行）
+	$(COMPOSE) exec web python scripts/seed_data.py
 
 # ------------------------------ 代码质量 ------------------------------
 

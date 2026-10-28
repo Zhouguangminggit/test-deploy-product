@@ -64,7 +64,10 @@ def test_file_upload_records_log(client, alice, tmp_path, settings):
     client.force_login(alice)
     client.post(
         "/files/upload/",
-        {"file": SimpleUploadedFile("doc.txt", b"x", content_type="text/plain"), "category": "document"},
+        {
+            "file": SimpleUploadedFile("doc.txt", b"x", content_type="text/plain"),
+            "category": "document",
+        },
     )
     log = OperationLog.objects.filter(action=OperationAction.FILE_UPLOAD).first()
     assert log is not None

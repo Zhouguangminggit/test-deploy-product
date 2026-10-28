@@ -16,7 +16,15 @@ class FileEntryAdmin(ModelAdmin):
     list_filter = ("category", "uploaded_at")
     search_fields = ("original_name", "uploader__username")
     date_hierarchy = "uploaded_at"
-    readonly_fields = ("uploader", "original_name", "file", "category", "size", "content_type", "uploaded_at")
+    readonly_fields = (
+        "uploader",
+        "original_name",
+        "file",
+        "category",
+        "size",
+        "content_type",
+        "uploaded_at",
+    )
 
     def has_add_permission(self, request):  # noqa: ANN001
         """文件通过业务界面上传，后台禁止手动新增。"""
