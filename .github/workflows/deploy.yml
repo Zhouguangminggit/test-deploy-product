@@ -1,84 +1,154 @@
-# 产品部署流水线（中台兼容版）
-# 触发方式：① push 到 main（沿用原有 CI，全部走仓库 secrets）
-#          ② 中台后台「触发部署」经 workflow_dispatch（合并后的环境变量以 inputs 直传）
-name: deploy
+name: Deploy
 
+# 双通道部署流水线（保持原有 push 部署行为不变）：
+#   ① push 到 main：自动触发，全部变量取仓库 Secrets（与原配置完全等价，零影响）
+#   ② 中台后台「触发部署」：workflow_dispatch，变量由中台以 inputs 直传，Secrets 兜底
+# 变量解析规则：github.event.inputs.X || secrets.X；敏感值经 inputs 时运行时自动掩码
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
-      SSH_HOST:        { description: "部署服务器地址（中台自动注入 deploy_host）", required: false }
-      SSH_USER:        { description: "SSH 用户", required: false }
-      SSH_PORT:        { description: "SSH 端口", required: false }
-      SSH_KEY:         { description: "SSH 私钥（多行，敏感）", required: false }
+      SSH_HOST:        { description: "服务器地址（中台自动注入 deploy_host）", required: false }
+      SSH_USER:        { description: "服务器用户名", required: false }
+      SSH_PORT:        { description: "SSH 端口，默认 22", required: false }
+      SSH_KEY:         { description: "SSH 私钥（敏感）", required: false }
+      SSH_PASSPHRASE:  { description: "私钥口令（敏感，可空）", required: false }
       DEPLOY_PATH:     { description: "服务器部署目录（中台自动注入 deploy_path）", required: false }
       APP_PORT:        { description: "宿主映射端口（中台自动注入 host_port）", required: false }
+      APP_HOST:        { description: "访问域名/IP，未配置回退 SSH_HOST", required: false }
       ACR_REGISTRY:    { description: "ACR 仓库地址", required: false }
       ACR_NAMESPACE:   { description: "ACR 命名空间", required: false }
-      ACR_USERNAME:    { description: "ACR 用户名（敏感）", required: false }
+      ACR_REPOSITORY:  { description: "镜像仓库名，默认 django-scaffold", required: false }
+      ACR_USERNAME:    { description: "ACR 账号（敏感）", required: false }
       ACR_PASSWORD:    { description: "ACR 密码（敏感）", required: false }
-      IMAGE_NAME:      { description: "镜像名", required: false }
-      COMPOSE_SERVICE: { description: "compose 服务名", required: false }
-      DEPLOY_BRANCH:   { description: "部署分支", required: false }
+      DEPLOY_BRANCH:   { description: "部署分支，默认触发 ref", required: false }
 
-# 统一取值模式：github.event.inputs.X 优先（中台触发），secrets.X 兜底（push/手动触发）
-env:
-  SSH_HOST: ${{ github.event.inputs.SSH_HOST || secrets.SSH_HOST }}
-  SSH_USER: ${{ github.event.inputs.SSH_USER || secrets.SSH_USER }}
-  SSH_PORT: ${{ github.event.inputs.SSH_PORT || secrets.SSH_PORT || '22' }}
-  SSH_KEY: ${{ github.event.inputs.SSH_KEY || secrets.SSH_KEY }}
-  DEPLOY_PATH: ${{ github.event.inputs.DEPLOY_PATH || secrets.DEPLOY_PATH }}
-  APP_PORT: ${{ github.event.inputs.APP_PORT || secrets.APP_PORT }}
-  ACR_REGISTRY: ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
-  ACR_NAMESPACE: ${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
-  ACR_USERNAME: ${{ github.event.inputs.ACR_USERNAME || secrets.ACR_USERNAME }}
-  ACR_PASSWORD: ${{ github.event.inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
-  IMAGE_NAME: ${{ github.event.inputs.IMAGE_NAME || secrets.IMAGE_NAME || github.event.repository.name }}
-  COMPOSE_SERVICE: ${{ github.event.inputs.COMPOSE_SERVICE || secrets.COMPOSE_SERVICE || 'app' }}
-  DEPLOY_BRANCH: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build-push:
+    name: 构建镜像并推送至 ACR
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.DEPLOY_BRANCH }}
+          ref: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
 
-      # ……产品特有构建步骤保持原样（如 uv sync / npm build / 单元测试）……
-
-      - name: Build & push image (ACR)
+      - name: Resolve variables (inputs 优先，Secrets 兜底)
         run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
-          echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin
-          docker build -t "${ACR_REGISTRY}/${ACR_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}" .
-          docker push "${ACR_REGISTRY}/${ACR_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}"
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
+          set -eu
+          # 敏感值走 inputs 时登记运行时掩码，防止日志/变量泄漏
+          for v in "${{ github.event.inputs.SSH_KEY }}" "${{ github.event.inputs.SSH_PASSPHRASE }}" "${{ github.event.inputs.ACR_PASSWORD }}"; do
+            [ -n "$v" ] && echo "::add-mask::$v"
+          done
+          IMAGE_NAME="${{ github.event.inputs.ACR_REPOSITORY || secrets.ACR_REPOSITORY }}"
+          [ -n "${IMAGE_NAME}" ] || IMAGE_NAME=django-scaffold
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> "$GITHUB_ENV"
 
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "${SSH_PORT}" -H "${SSH_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Deploy over SSH
+      - name: Login to ACR
+        uses: docker/login-action@v3
         env:
-          PRIVATE_KEY_FILE: ~/.ssh/deploy_key
+          REGISTRY: ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
+          USERNAME: ${{ github.event.inputs.ACR_USERNAME || secrets.ACR_USERNAME }}
+          PASSWORD: ${{ github.event.inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ env.PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: |
+            ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}/${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}/${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+          # 构建缓存放在 GitHub Actions 缓存中：阿里云 ACR 不支持 BuildKit 的
+          # registry 缓存清单（application/vnd.buildkit.cacheconfig.v0 会被拒绝）
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  deploy:
+    name: 更新部署文件并部署检查
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
+
+      # job 级 env 无法引用 github 上下文，统一在此解析进 GITHUB_ENV 供全 job 复用
+      # （非敏感变量；私钥本体仍由后续步骤经 step env 传入，不落 GITHUB_ENV）
+      - name: Resolve variables (inputs 优先，Secrets 兜底)
         run: |
-          SSH="ssh -i $PRIVATE_KEY_FILE -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST"
-          SCP="scp -i $PRIVATE_KEY_FILE -P $SSH_PORT -o StrictHostKeyChecking=no"
-          # 同步 compose 描述符（compose.yml/.env 存放于仓库时；无则跳过，服务器保留存量 compose）
-          # $SCP compose.yml "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/compose.yml" || true
-          $SSH "bash -s" <<EOF || exit 1
-          set -e
-          export ACR_REGISTRY="${ACR_REGISTRY}" ACR_USERNAME="${ACR_USERNAME}" ACR_PASSWORD="${ACR_PASSWORD}"
-          cd "${DEPLOY_PATH}"
-          docker login "\${ACR_REGISTRY}" -u "\${ACR_USERNAME}" -p "\${ACR_PASSWORD}"
-          export APP_PORT="${APP_PORT}" IMAGE_TAG="${IMAGE_TAG}"
-          export IMAGE="${ACR_REGISTRY}/${ACR_NAMESPACE}/${IMAGE_NAME}:\${IMAGE_TAG}"
-          docker compose -p "${IMAGE_NAME}" pull "${COMPOSE_SERVICE}"
-          docker compose -p "${IMAGE_NAME}" up -d "${COMPOSE_SERVICE}"
-          EOF
+          set -eu
+          first_non_empty() {
+            local v
+            for v in "$@"; do
+              if [ -n "$v" ]; then printf '%s' "$v"; return; fi
+            done
+          }
+          {
+            echo "SSH_HOST=$(first_non_empty "${{ github.event.inputs.SSH_HOST }}" "${{ secrets.SSH_HOST }}")"
+            echo "SSH_USER=$(first_non_empty "${{ github.event.inputs.SSH_USER }}" "${{ secrets.SSH_USER }}")"
+            echo "SSH_PORT=$(first_non_empty "${{ github.event.inputs.SSH_PORT }}" "${{ secrets.SSH_PORT }}" 22)"
+            echo "DEPLOY_PATH=$(first_non_empty "${{ github.event.inputs.DEPLOY_PATH }}" "${{ secrets.DEPLOY_PATH }}")"
+            echo "APP_PORT=$(first_non_empty "${{ github.event.inputs.APP_PORT }}" "${{ secrets.APP_PORT }}" 8000)"
+            echo "IMAGE_NAME=$(first_non_empty "${{ github.event.inputs.ACR_REPOSITORY }}" "${{ secrets.ACR_REPOSITORY }}" django-scaffold)"
+            echo "ACR_REGISTRY=$(first_non_empty "${{ github.event.inputs.ACR_REGISTRY }}" "${{ secrets.ACR_REGISTRY }}")"
+            echo "ACR_NAMESPACE=$(first_non_empty "${{ github.event.inputs.ACR_NAMESPACE }}" "${{ secrets.ACR_NAMESPACE }}")"
+            echo "ACR_USERNAME=$(first_non_empty "${{ github.event.inputs.ACR_USERNAME }}" "${{ secrets.ACR_USERNAME }}")"
+          } >> "$GITHUB_ENV"
+          # APP_HOST 未配置时回退 SSH_HOST（与原流水线约定一致）
+          RUN_HOST=$(first_non_empty "${{ github.event.inputs.APP_HOST }}" "${{ secrets.APP_HOST }}")
+          [ -n "${RUN_HOST}" ] || RUN_HOST="${SSH_HOST}"
+          echo "APP_HOST=${RUN_HOST}" >> "$GITHUB_ENV"
+
+      # 直接用 runner 自带 OpenSSH（与本地 ssh 行为一致），避免第三方容器的兼容性问题
+      - name: Upload docker-compose.yml
+        env:
+          SSH_KEY: ${{ github.event.inputs.SSH_KEY || secrets.SSH_KEY }}
+          SSH_PASSPHRASE: ${{ github.event.inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
+        run: |
+          set -eu
+
+          # 清理 Secret 中可能混入的空格/换行，并兼容误填成 user@host 的写法
+          SSH_USER=$(printf '%s' "${SSH_USER}" | tr -d '[:space:]')
+          SSH_HOST=$(printf '%s' "${SSH_HOST}" | tr -d '[:space:]')
+          SSH_PORT=$(printf '%s' "${SSH_PORT}" | tr -d '[:space:]')
+          DEPLOY_PATH=$(printf '%s' "${DEPLOY_PATH}" | sed 's/[[:space:]]*$//')
+          SSH_USER="${SSH_USER%%@*}"
+          SSH_HOST="${SSH_HOST##*@}"
+          [ -n "${SSH_PORT}" ] || SSH_PORT=22
+
+          case "${SSH_USER}" in
+            ""|*[!A-Za-z0-9._-]*) echo "::error::SSH_USER 为空或含非法字符，应只填写登录用户名（如 root）"; exit 1 ;;
+          esac
+          case "${SSH_HOST}" in
+            ""|*[!A-Za-z0-9.-]*) echo "::error::SSH_HOST 为空或含非法字符，应只填写域名/IP（不要带 user@ 或端口）"; exit 1 ;;
+          esac
+          case "${SSH_PORT}" in
+            *[!0-9]*) echo "::error::SSH_PORT 只能是数字"; exit 1 ;;
+          esac
+          [ -n "${DEPLOY_PATH}" ] || { echo "::error::DEPLOY_PATH 为空"; exit 1; }
+          [ -n "${SSH_KEY}" ] || { echo "::error::SSH_KEY 为空，请确认私钥已配置（Secrets 或中台全局变量）"; exit 1; }
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "${SSH_KEY}" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_PASSPHRASE}" ]; then
+            ssh-keygen -p -P "${SSH_PASSPHRASE}" -N "" -f ~/.ssh/deploy_key >/dev/null
+          fi
+
+          echo "Secret 私钥对应的公钥指纹（
