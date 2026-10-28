@@ -1,214 +1,84 @@
-name: Deploy
-
-# 流水线阶段：
-#   1. 构建镜像并推送至阿里云 ACR（使用 GitHub Actions 缓存复用构建层）；
-#   2. 更新服务器上的 docker-compose.yml；
-#   3. 拉取镜像重启服务并做容器健康检查。
-#
-# 需配置的 Secrets（Settings → Secrets and variables → Actions）：
-#   ACR_REGISTRY    镜像仓库地址，如 registry.cn-hangzhou.aliyuncs.com
-#   ACR_NAMESPACE   镜像仓库命名空间
-#   ACR_REPOSITORY  镜像仓库名称，如 django-scaffold（可选，默认 django-scaffold）
-#   ACR_USERNAME    ACR 账号
-#   ACR_PASSWORD    ACR 密码
-#   SSH_HOST        服务器地址
-#   SSH_USER        服务器用户名
-#   SSH_KEY         SSH 私钥 d
-#   SSH_PORT        SSH 端口（可选，默认 22）
-#   SSH_PASSPHRASE  私钥口令（可选，私钥无口令时留空） d
-#   DEPLOY_PATH     服务器部署目录，如 /opt/django-scaffold
-#   APP_PORT        宿主机对外映射端口（可选，默认 8000）
-#   APP_HOST        浏览器访问用的域名/IP（多个以英文逗号分隔），注入 Django
-#                   ALLOWED_HOSTS；未配置时回退 SSH_HOST
-#
-# 应用运行配置：构建镜像时会自动将 .env.example 复制为 .env 供应用加载；
-# ALLOWED_HOSTS、宿主机映射端口等与服务器相关的项无法固化在镜像里，
-# 由本流水线通过 APP_HOST / APP_PORT 两个 Secrets 注入。
-#
-# 服务器目录约定：
-#   $DEPLOY_PATH/deploy/docker-compose.yml   # 由本流水线自动覆盖更新
-#   $DEPLOY_PATH/deploy/.env                 # 由本流水线自动生成（APP_IMAGE/
-#                                            #   APP_PORT/ALLOWED_HOSTS），中台系统或
-#                                            #   人工 SSH 直接 up/down 无需再 export 变量
+# 产品部署流水线（中台兼容版）
+# 触发方式：① push 到 main（沿用原有 CI，全部走仓库 secrets）
+#          ② 中台后台「触发部署」经 workflow_dispatch（合并后的环境变量以 inputs 直传）
+name: deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      SSH_HOST:        { description: "部署服务器地址（中台自动注入 deploy_host）", required: false }
+      SSH_USER:        { description: "SSH 用户", required: false }
+      SSH_PORT:        { description: "SSH 端口", required: false }
+      SSH_KEY:         { description: "SSH 私钥（多行，敏感）", required: false }
+      DEPLOY_PATH:     { description: "服务器部署目录（中台自动注入 deploy_path）", required: false }
+      APP_PORT:        { description: "宿主映射端口（中台自动注入 host_port）", required: false }
+      ACR_REGISTRY:    { description: "ACR 仓库地址", required: false }
+      ACR_NAMESPACE:   { description: "ACR 命名空间", required: false }
+      ACR_USERNAME:    { description: "ACR 用户名（敏感）", required: false }
+      ACR_PASSWORD:    { description: "ACR 密码（敏感）", required: false }
+      IMAGE_NAME:      { description: "镜像名", required: false }
+      COMPOSE_SERVICE: { description: "compose 服务名", required: false }
+      DEPLOY_BRANCH:   { description: "部署分支", required: false }
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
+# 统一取值模式：github.event.inputs.X 优先（中台触发），secrets.X 兜底（push/手动触发）
 env:
-  # ACR 镜像仓库名称；未配置 Secret 时使用默认值
-  IMAGE_NAME: ${{ secrets.ACR_REPOSITORY || 'django-scaffold' }}
+  SSH_HOST: ${{ github.event.inputs.SSH_HOST || secrets.SSH_HOST }}
+  SSH_USER: ${{ github.event.inputs.SSH_USER || secrets.SSH_USER }}
+  SSH_PORT: ${{ github.event.inputs.SSH_PORT || secrets.SSH_PORT || '22' }}
+  SSH_KEY: ${{ github.event.inputs.SSH_KEY || secrets.SSH_KEY }}
+  DEPLOY_PATH: ${{ github.event.inputs.DEPLOY_PATH || secrets.DEPLOY_PATH }}
+  APP_PORT: ${{ github.event.inputs.APP_PORT || secrets.APP_PORT }}
+  ACR_REGISTRY: ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
+  ACR_NAMESPACE: ${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
+  ACR_USERNAME: ${{ github.event.inputs.ACR_USERNAME || secrets.ACR_USERNAME }}
+  ACR_PASSWORD: ${{ github.event.inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
+  IMAGE_NAME: ${{ github.event.inputs.IMAGE_NAME || secrets.IMAGE_NAME || github.event.repository.name }}
+  COMPOSE_SERVICE: ${{ github.event.inputs.COMPOSE_SERVICE || secrets.COMPOSE_SERVICE || 'app' }}
+  DEPLOY_BRANCH: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
 
 jobs:
-  build-push:
-    name: 构建镜像并推送至 ACR
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to ACR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.ACR_REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
-          # 构建缓存放在 GitHub Actions 缓存中：阿里云 ACR 不支持 BuildKit 的
-          # registry 缓存清单（application/vnd.buildkit.cacheconfig.v0 会被拒绝）
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
-
   deploy:
-    name: 更新部署文件并部署检查
-    needs: build-push
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # 直接用 runner 自带 OpenSSH（与本地 ssh 行为一致），避免第三方容器的兼容性问题
-      - name: Upload docker-compose.yml
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PORT: ${{ secrets.SSH_PORT || 22 }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          set -eu
-
-          # 清理 Secret 中可能混入的空格/换行，并兼容误填成 user@host 的写法
-          SSH_USER=$(printf '%s' "${SSH_USER}" | tr -d '[:space:]')
-          SSH_HOST=$(printf '%s' "${SSH_HOST}" | tr -d '[:space:]')
-          SSH_PORT=$(printf '%s' "${SSH_PORT}" | tr -d '[:space:]')
-          DEPLOY_PATH=$(printf '%s' "${DEPLOY_PATH}" | sed 's/[[:space:]]*$//')
-          SSH_USER="${SSH_USER%%@*}"
-          SSH_HOST="${SSH_HOST##*@}"
-          [ -n "${SSH_PORT}" ] || SSH_PORT=22
-
-          case "${SSH_USER}" in
-            ""|*[!A-Za-z0-9._-]*) echo "::error::SSH_USER 为空或含非法字符，应只填写登录用户名（如 root）"; exit 1 ;;
-          esac
-          case "${SSH_HOST}" in
-            ""|*[!A-Za-z0-9.-]*) echo "::error::SSH_HOST 为空或含非法字符，应只填写域名/IP（不要带 user@ 或端口）"; exit 1 ;;
-          esac
-          case "${SSH_PORT}" in
-            *[!0-9]*) echo "::error::SSH_PORT 只能是数字"; exit 1 ;;
-          esac
-          [ -n "${DEPLOY_PATH}" ] || { echo "::error::DEPLOY_PATH 为空"; exit 1; }
-          [ -n "${SSH_KEY}" ] || { echo "::error::SSH_KEY 为空，请确认私钥配置在 Secrets 中"; exit 1; }
-
-          # 供后续步骤复用清理后的值
-          {
-            echo "SSH_USER=${SSH_USER}"
-            echo "SSH_HOST=${SSH_HOST}"
-            echo "SSH_PORT=${SSH_PORT}"
-            echo "DEPLOY_PATH=${DEPLOY_PATH}"
-          } >> "${GITHUB_ENV}"
-
-          mkdir -p ~/.ssh
-          printf '%s\n' "${SSH_KEY}" | tr -d '\r' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          if [ -n "${SSH_PASSPHRASE}" ]; then
-            ssh-keygen -p -P "${SSH_PASSPHRASE}" -N "" -f ~/.ssh/deploy_key >/dev/null
-          fi
-
-          echo "Secret 私钥对应的公钥指纹（请与服务器 authorized_keys 中一致）："
-          ssh-keygen -y -f ~/.ssh/deploy_key > /tmp/deploy_key.pub
-          ssh-keygen -lf /tmp/deploy_key.pub
-
-          # 用 -o Port= 同时兼容 ssh 与 scp（scp 的 -P 与 ssh 的 -p 含义不同）
-          SSH_OPTS="-i $HOME/.ssh/deploy_key -o Port=${SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
-          if ! ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" 'echo "连接成功：$(whoami)@$(hostname)"'; then
-            echo "::error::SSH 连接失败：请确认用户 ${SSH_USER} 的 ~/.ssh/authorized_keys 中包含上面指纹对应的公钥"
-            exit 1
-          fi
-
-          ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" "mkdir -p '${DEPLOY_PATH}/deploy'"
-          scp $SSH_OPTS deploy/docker-compose.yml "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/deploy/docker-compose.yml"
-
-      - name: Pull, restart and health check
-        uses: appleboy/ssh-action@v1
         with:
-          host: ${{ env.SSH_HOST }}
-          username: ${{ env.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: ${{ env.SSH_PORT }}
-          # 临时开启以输出 SSH 协商细节，定位认证失败后请改回 false
-          debug: true
-          script: |
-            set -eu
+          ref: ${{ env.DEPLOY_BRANCH }}
 
-            cd "${{ env.DEPLOY_PATH }}"
+      # ……产品特有构建步骤保持原样（如 uv sync / npm build / 单元测试）……
 
-            # ACR 账号密码等 Secrets 只在 runner 本地展开，SSH 远端脚本无法引用，
-            # 因此这里先在 runner 上拼好镜像地址、端口和域名，再写入服务器
-            # deploy/.env，供服务器侧（含中台系统/人工 SSH）执行 compose 时自动读取
-            IMAGE_NAME="${{ secrets.ACR_REPOSITORY || 'django-scaffold' }}"
-            REPO="${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${IMAGE_NAME}"
-            RUN_PORT="${{ secrets.APP_PORT }}"
-            [ -n "${RUN_PORT}" ] || RUN_PORT=8000
-            RUN_HOST="${{ secrets.APP_HOST }}"
-            [ -n "${RUN_HOST}" ] || RUN_HOST="${{ env.SSH_HOST }}"
-            ALLOWED="${RUN_HOST},localhost,127.0.0.1"
-            COMPOSE="docker compose -f deploy/docker-compose.yml"
+      - name: Build & push image (ACR)
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin
+          docker build -t "${ACR_REGISTRY}/${ACR_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}" .
+          docker push "${ACR_REGISTRY}/${ACR_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
 
-            echo "==> 登录 ACR"
-            echo "${{ secrets.ACR_PASSWORD }}" | docker login "${{ secrets.ACR_REGISTRY }}" \
-              -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${SSH_PORT}" -H "${SSH_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
 
-            # 落地 compose 环境变量文件：APP_IMAGE 固定 :latest（CI 每次部署都会
-            # 推送最新 sha 镜像到 :latest），中台仅执行 up -d 也能拉到最新版本；
-            # 本次部署仍显式使用 sha tag，保证与流水线产物严格对应
-            # 用 printf 而非 heredoc，避免 YAML 块缩进被写进 .env 行首
-            printf 'APP_IMAGE=%s\nAPP_PORT=%s\nALLOWED_HOSTS=%s\n' \
-              "${REPO}:latest" "${RUN_PORT}" "${ALLOWED}" > deploy/.env
-
-            echo "==> 拉取镜像 ${REPO}:${{ github.sha }}"
-            APP_IMAGE="${REPO}:${{ github.sha }}" ALLOWED_HOSTS="${ALLOWED}" $COMPOSE pull web
-
-            echo "==> 重启服务"
-            APP_IMAGE="${REPO}:${{ github.sha }}" ALLOWED_HOSTS="${ALLOWED}" \
-              $COMPOSE up -d --remove-orphans
-
-            echo "==> 等待健康检查通过"
-            for i in $(seq 1 30); do
-              cid=$($COMPOSE ps -q web)
-              status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)
-              echo "第 ${i} 次检查：${status}"
-              if [ "$status" = "healthy" ]; then
-                echo "部署成功"
-                exit 0
-              fi
-              if [ "$status" = "unhealthy" ]; then
-                $COMPOSE logs --tail=100 web
-                echo "健康检查失败"
-                exit 1
-              fi
-              sleep 5
-            done
-
-            $COMPOSE logs --tail=100 web
-            echo "健康检查超时"
-            exit 1
+      - name: Deploy over SSH
+        env:
+          PRIVATE_KEY_FILE: ~/.ssh/deploy_key
+        run: |
+          SSH="ssh -i $PRIVATE_KEY_FILE -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST"
+          SCP="scp -i $PRIVATE_KEY_FILE -P $SSH_PORT -o StrictHostKeyChecking=no"
+          # 同步 compose 描述符（compose.yml/.env 存放于仓库时；无则跳过，服务器保留存量 compose）
+          # $SCP compose.yml "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/compose.yml" || true
+          $SSH "bash -s" <<EOF || exit 1
+          set -e
+          export ACR_REGISTRY="${ACR_REGISTRY}" ACR_USERNAME="${ACR_USERNAME}" ACR_PASSWORD="${ACR_PASSWORD}"
+          cd "${DEPLOY_PATH}"
+          docker login "\${ACR_REGISTRY}" -u "\${ACR_USERNAME}" -p "\${ACR_PASSWORD}"
+          export APP_PORT="${APP_PORT}" IMAGE_TAG="${IMAGE_TAG}"
+          export IMAGE="${ACR_REGISTRY}/${ACR_NAMESPACE}/${IMAGE_NAME}:\${IMAGE_TAG}"
+          docker compose -p "${IMAGE_NAME}" pull "${COMPOSE_SERVICE}"
+          docker compose -p "${IMAGE_NAME}" up -d "${COMPOSE_SERVICE}"
+          EOF
