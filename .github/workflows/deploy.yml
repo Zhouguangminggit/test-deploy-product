@@ -4,6 +4,11 @@ name: Deploy
 #   ① push 到 main：自动触发，全部变量取仓库 Secrets（与原配置完全等价，零影响）
 #   ② 中台后台「触发部署」：workflow_dispatch，变量由中台以 inputs 直传，Secrets 兜底
 # 变量解析规则：github.event.inputs.X || secrets.X；敏感值经 inputs 时运行时自动掩码
+#
+# 中台侧配置约定：workflow_file 填 deploy.yml（与本仓库 .github/workflows/deploy.yml 文件名一致）；
+# 中台自动注入权威值 SSH_HOST=deploy_host、DEPLOY_PATH=deploy_path、APP_PORT=host_port，
+# 其余项在全局/产品变量中以同名 var_key 配置（SSH_USER/SSH_PORT/SSH_KEY/SSH_PASSPHRASE/APP_HOST/
+# ACR_REGISTRY/ACR_NAMESPACE/ACR_REPOSITORY/ACR_USERNAME/ACR_PASSWORD/COMPOSE_SERVICE）
 on:
   push:
     branches: [main]
@@ -22,6 +27,7 @@ on:
       ACR_REPOSITORY:  { description: "镜像仓库名，默认 django-scaffold", required: false }
       ACR_USERNAME:    { description: "ACR 账号（敏感）", required: false }
       ACR_PASSWORD:    { description: "ACR 密码（敏感）", required: false }
+      COMPOSE_SERVICE: { description: "compose 服务名，默认 web", required: false }
       DEPLOY_BRANCH:   { description: "部署分支，默认触发 ref", required: false }
 
 concurrency:
@@ -41,9 +47,9 @@ jobs:
       - name: Resolve variables (inputs 优先，Secrets 兜底)
         run: |
           set -eu
-          # 敏感值走 inputs 时登记运行时掩码，防止日志/变量泄漏
+          # 敏感值走 inputs 时登记运行时掩码，防止日志与后续变量泄漏
           for v in "${{ github.event.inputs.SSH_KEY }}" "${{ github.event.inputs.SSH_PASSPHRASE }}" "${{ github.event.inputs.ACR_PASSWORD }}"; do
-            [ -n "$v" ] && echo "::add-mask::$v"
+            if [ -n "$v" ]; then echo "::add-mask::$v"; fi
           done
           IMAGE_NAME="${{ github.event.inputs.ACR_REPOSITORY || secrets.ACR_REPOSITORY }}"
           [ -n "${IMAGE_NAME}" ] || IMAGE_NAME=django-scaffold
@@ -67,6 +73,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          # 脚手架 Dockerfile 固定在 deploy/ 下，不可写仓库根目录
           file: deploy/Dockerfile
           push: true
           tags: |
@@ -88,8 +95,8 @@ jobs:
         with:
           ref: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
 
-      # job 级 env 无法引用 github 上下文，统一在此解析进 GITHUB_ENV 供全 job 复用
-      # （非敏感变量；私钥本体仍由后续步骤经 step env 传入，不落 GITHUB_ENV）
+      # job 级 env 不能引用 github 上下文，这里把非敏感变量统一解析进 GITHUB_ENV 供全 job 复用；
+      # 私钥/口令本体与 ACR 密码仍走 step 级 env，不落 GITHUB_ENV
       - name: Resolve variables (inputs 优先，Secrets 兜底)
         run: |
           set -eu
@@ -108,11 +115,11 @@ jobs:
             echo "IMAGE_NAME=$(first_non_empty "${{ github.event.inputs.ACR_REPOSITORY }}" "${{ secrets.ACR_REPOSITORY }}" django-scaffold)"
             echo "ACR_REGISTRY=$(first_non_empty "${{ github.event.inputs.ACR_REGISTRY }}" "${{ secrets.ACR_REGISTRY }}")"
             echo "ACR_NAMESPACE=$(first_non_empty "${{ github.event.inputs.ACR_NAMESPACE }}" "${{ secrets.ACR_NAMESPACE }}")"
-            echo "ACR_USERNAME=$(first_non_empty "${{ github.event.inputs.ACR_USERNAME }}" "${{ secrets.ACR_USERNAME }}")"
+            echo "COMPOSE_SERVICE=$(first_non_empty "${{ github.event.inputs.COMPOSE_SERVICE }}" "${{ secrets.COMPOSE_SERVICE }}" web)"
           } >> "$GITHUB_ENV"
           # APP_HOST 未配置时回退 SSH_HOST（与原流水线约定一致）
           RUN_HOST=$(first_non_empty "${{ github.event.inputs.APP_HOST }}" "${{ secrets.APP_HOST }}")
-          [ -n "${RUN_HOST}" ] || RUN_HOST="${SSH_HOST}"
+          if [ -z "${RUN_HOST}" ]; then RUN_HOST="${SSH_HOST}"; fi
           echo "APP_HOST=${RUN_HOST}" >> "$GITHUB_ENV"
 
       # 直接用 runner 自带 OpenSSH（与本地 ssh 行为一致），避免第三方容器的兼容性问题
@@ -123,7 +130,7 @@ jobs:
         run: |
           set -eu
 
-          # 清理 Secret 中可能混入的空格/换行，并兼容误填成 user@host 的写法
+          # 清理 Secret/inputs 中可能混入的空格/换行，并兼容误填成 user@host 的写法
           SSH_USER=$(printf '%s' "${SSH_USER}" | tr -d '[:space:]')
           SSH_HOST=$(printf '%s' "${SSH_HOST}" | tr -d '[:space:]')
           SSH_PORT=$(printf '%s' "${SSH_PORT}" | tr -d '[:space:]')
@@ -142,7 +149,7 @@ jobs:
             *[!0-9]*) echo "::error::SSH_PORT 只能是数字"; exit 1 ;;
           esac
           [ -n "${DEPLOY_PATH}" ] || { echo "::error::DEPLOY_PATH 为空"; exit 1; }
-          [ -n "${SSH_KEY}" ] || { echo "::error::SSH_KEY 为空，请确认私钥已配置（Secrets 或中台全局变量）"; exit 1; }
+          [ -n "${SSH_KEY}" ] || { echo "::error::SSH_KEY 为空，请确认私钥已配置（仓库 Secrets 或中台全局变量）"; exit 1; }
 
           mkdir -p ~/.ssh
           printf '%s\n' "${SSH_KEY}" | tr -d '\r' > ~/.ssh/deploy_key
@@ -151,4 +158,87 @@ jobs:
             ssh-keygen -p -P "${SSH_PASSPHRASE}" -N "" -f ~/.ssh/deploy_key >/dev/null
           fi
 
-          echo "Secret 私钥对应的公钥指纹（
+          echo "本次部署使用的公钥指纹（应与服务器 authorized_keys 中一致）："
+          ssh-keygen -y -f ~/.ssh/deploy_key > /tmp/deploy_key.pub
+          ssh-keygen -lf /tmp/deploy_key.pub
+
+          # 用 -o Port= 同时兼容 ssh 与 scp（scp 的 -P 与 ssh 的 -p 含义不同）
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o Port=${SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+          if ! ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" 'echo "连接成功：$(whoami)@$(hostname)"'; then
+            echo "::error::SSH 连接失败：请确认用户 ${SSH_USER} 的 ~/.ssh/authorized_keys 中包含上面指纹对应的公钥"
+            exit 1
+          fi
+
+          ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" "mkdir -p '${DEPLOY_PATH}/deploy'"
+          scp $SSH_OPTS deploy/docker-compose.yml "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/deploy/docker-compose.yml"
+
+      - name: Pull, restart and health check
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.SSH_HOST }}
+          username: ${{ env.SSH_USER }}
+          key: ${{ github.event.inputs.SSH_KEY || secrets.SSH_KEY }}
+          passphrase: ${{ github.event.inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
+          port: ${{ env.SSH_PORT }}
+          # 远端脚本仅引用 envs 注入的变量（不含 ${{ }}, 避免 runner 二次展开）
+          envs: REGISTRY USERNAME PASSWORD NAMESPACE IMAGE_NAME IMAGE_TAG RUN_PORT RUN_HOST DEPLOY_PATH COMPOSE_SERVICE
+          script: |
+            set -eu
+
+            cd "${DEPLOY_PATH}"
+
+            # ACR 账号密码等只在 runner 侧准备好，SSH 远端脚本无法引用 Secrets，
+            # 因此这里用 environment 注入的变量在远端拼好镜像地址、端口和域名，
+            # 再写入服务器 deploy/.env，供服务器侧（含中台系统/人工 SSH）自动读取
+            REPO="${REGISTRY}/${NAMESPACE}/${IMAGE_NAME}"
+            ALLOWED="${RUN_HOST},localhost,127.0.0.1"
+            COMPOSE="docker compose -f deploy/docker-compose.yml"
+
+            echo "==> 登录 ACR"
+            echo "${PASSWORD}" | docker login "${REGISTRY}" -u "${USERNAME}" --password-stdin
+
+            # 落地 compose 环境变量文件：APP_IMAGE 固定 :latest（CI 每次部署都会
+            # 推送最新 sha 镜像到 :latest），中台仅执行 up -d 也能拉到最新版本；
+            # 本次部署仍显式使用 sha tag，保证与流水线产物严格对应
+            # 用 printf 而非 heredoc，避免 YAML 块缩进被写进 .env 行首
+            printf 'APP_IMAGE=%s\nAPP_PORT=%s\nALLOWED_HOSTS=%s\n' \
+              "${REPO}:latest" "${RUN_PORT}" "${ALLOWED}" > deploy/.env
+
+            echo "==> 拉取镜像 ${REPO}:${IMAGE_TAG}"
+            APP_IMAGE="${REPO}:${IMAGE_TAG}" ALLOWED_HOSTS="${ALLOWED}" $COMPOSE pull "${COMPOSE_SERVICE}"
+
+            echo "==> 重启服务"
+            APP_IMAGE="${REPO}:${IMAGE_TAG}" ALLOWED_HOSTS="${ALLOWED}" \
+              $COMPOSE up -d --remove-orphans
+
+            echo "==> 等待健康检查通过"
+            for i in $(seq 1 30); do
+              cid=$($COMPOSE ps -q "${COMPOSE_SERVICE}")
+              status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)
+              echo "第 ${i} 次检查：${status}"
+              if [ "$status" = "healthy" ]; then
+                echo "部署成功"
+                exit 0
+              fi
+              if [ "$status" = "unhealthy" ]; then
+                $COMPOSE logs --tail=100 "${COMPOSE_SERVICE}"
+                echo "健康检查失败"
+                exit 1
+              fi
+              sleep 5
+            done
+
+            $COMPOSE logs --tail=100 "${COMPOSE_SERVICE}"
+            echo "健康检查超时"
+            exit 1
+        env:
+          REGISTRY: ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
+          USERNAME: ${{ github.event.inputs.ACR_USERNAME || secrets.ACR_USERNAME }}
+          PASSWORD: ${{ github.event.inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
+          NAMESPACE: ${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+          RUN_PORT: ${{ env.APP_PORT }}
+          RUN_HOST: ${{ env.APP_HOST }}
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          COMPOSE_SERVICE: ${{ env.COMPOSE_SERVICE }}
