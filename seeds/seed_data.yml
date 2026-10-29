@@ -1,0 +1,59 @@
+# =============================================================================
+# seedkit 统一业务数据配置（本地 make seed-data 与线上中台触发加载同一份）
+# =============================================================================
+# 结构：version + modules → models → rows。所有数据显式声明（不使用随机造数），
+# 行与行之间通过 ref 引用保证业务关联真实性（如商品必须挂在正确的分类下）。
+#
+# 校验为 fail-fast：任一模型/字段/引用非法，整体报错、不落一条数据。
+# 幂等：模型已有数据则跳过；--refresh 时按声明逆序清空后重填。
+#
+# 字段说明
+#   model            必填，"app_label.ModelName"，被引用模型必须先声明
+#   rows             必填，行列表；每行是「字段名 → 值」的映射
+#     _key           选填，自定义该行被引用的键（缺省用模型首个唯一字段的值）
+#     <fk>:          外键：{ ref: "app.Model.键" } 或直接给主键标量
+#     <m2m>:         多对多：{ refs: [ {ref: "..."}, ... ] } 或 [ "app.Model.键", ... ]
+#     <image>:       图片字段行级覆盖：{ keywords: "搜索词" }
+#   images           选填，模型级图片字段默认配置（列表）
+#     field          图片字段名（ImageField / FileField）
+#     keywords_from  关键词取自行内该字段的值（如 title，保证图文匹配）
+#     keywords       固定回退关键词（该模型所有行共用）
+#   图片关键词优先级：行内 { keywords } > 模型级 keywords_from > 模型级 keywords
+#
+# -----------------------------------------------------------------------------
+# 示例（校园二手交易：分类 → 商品，商品挂在正确分类下、封面图匹配商品主题）
+# 复制去掉注释、把 products 换成你的真实 app_label 与模型即可：
+# -----------------------------------------------------------------------------
+# version: 1
+# modules:
+#   products:
+#     models:
+#       - model: products.Category
+#         rows:
+#           - name: 电子器材
+#           - name: 图书
+#       - model: products.Product
+#         images:
+#           - field: cover
+#             keywords_from: title          # 用商品标题作为图片搜索词，图文匹配
+#         rows:
+#           - title: 手机
+#             category: { ref: "products.Category.电子器材" }
+#             price: 2999
+#           - title: 电脑
+#             category: { ref: "products.Category.电子器材" }
+#             price: 5999
+#           - title: 平板
+#             category: { ref: "products.Category.电子器材" }
+#             price: 3299
+#           - title: 书籍
+#             category: { ref: "products.Category.图书" }
+#             price: 59
+#             cover: { keywords: "book reading" }   # 行级覆盖：用更精准的英文搜索词
+#
+# -----------------------------------------------------------------------------
+# 基座当前无业务模型，modules 留空；执行 make seed-data 会输出「无可执行模块」。
+# 业务主题项目开发时，在下方 modules 中按真实模型追加声明。
+# -----------------------------------------------------------------------------
+version: 1
+modules: {}

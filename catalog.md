@@ -77,6 +77,22 @@ django-scaffold/
 │   │   └── tests/
 │   │       └── __init__.py
 │   │
+│   ├── seedkit/                          # 业务数据初始化基座（统一 YAML 驱动，中台/本地共用）
+│   │   ├── __init__.py
+│   │   ├── apps.py
+│   │   ├── models.py                      # SeedRun 运行记录 / SeedRunLog 逐条日志
+│   │   ├── enums.py                       # 触发方式 / 状态 / 日志级别枚举
+│   │   ├── loader.py                      # seed_data.yml 加载 + Schema 校验（fail-fast）
+│   │   ├── engine.py                      # 写库引擎（ref 解析 / 图片分配 / 幂等 / refresh）
+│   │   ├── services.py                    # 运行编排与状态流转（日志双写 DB + loguru）
+│   │   ├── selectors.py                   # 运行记录 / 日志查询
+│   │   ├── tasks.py                       # Celery 任务编排
+│   │   ├── admin.py                       # 只读查看运行记录 + 日志内联
+│   │   ├── management/
+│   │   │   └── commands/                  # seedkit_run（触发）/ seedkit_status（查询）
+│   │   ├── migrations/
+│   │   └── tests/
+│   │
 │   └── demo/                             # 示例业务模块，可替换
 │       ├── __init__.py
 │       ├── apps.py
@@ -109,7 +125,7 @@ django-scaffold/
 │   ├── date_time.py                      # 日期时间处理工具
 │   ├── file_helpers.py                   # 文件名、文件大小等处理
 │   ├── image_helpers.py                  # 图片处理工具
-│   ├── resource_fetcher.py               # Pixabay 图片资源获取与 Django 集成
+│   ├── pixabay.py                        # Pixabay 图片检索下载客户端（seedkit 数据初始化用）
 │   ├── security.py                       # 安全相关辅助方法
 │   │
 │   └── templatetags/                     # Django 自定义模板标签
@@ -175,7 +191,9 @@ django-scaffold/
 │   │   ├── introduction.md               # 项目简介
 │   │   ├── functional-description.md      # 功能说明（包含基础、核心、创新功能）
 │   │   ├── technology-stack.md            # 技术栈说明
-│   │   └── system-architecture.md         # 系统架构说明
+│   │   ├── system-architecture.md         # 系统架构说明
+│   │   ├── seed-data-guide.md             # 种子数据填充指南（seedkit 统一 YAML）
+│   │   └── seedkit-platform-integration.md # seedkit 中台接入说明（SSH 触发/轮询）
 │   │
 │   │
 │   ├── deployment/                       # 部署文档
@@ -209,20 +227,13 @@ django-scaffold/
 │       └── screenshots/                  # 系统截图
 │
 ├── scripts/                              # 项目辅助脚本
-│   ├── init_data.py                      # 初始化数据脚本
-│   ├── seed_data.py                      # 种子数据填充主入口
-│   ├── export_database.py                # 数据导出脚本
-│   ├── import_database.py                # 数据导入脚本
-│   │
-│   └── _seed_lib/                        # 种子数据内部工具
-│       ├── __init__.py
-│       ├── pixabay_client.py             # Pixabay API 客户端
-│       └── engine.py                     # 数据填充引擎
+│   ├── init_data.py                      # 基础数据初始化（超级用户等，make init-data）
+│   ├── export_database.py                # 数据导出脚本（make export-db）
+│   └── import_database.py                # 数据导入脚本（make import-db）
 │
-├── seeds/                                # 种子数据配置（每个业务模块一个文件）
-│   ├── __init__.py                       # 自动发现机制
-│   ├── _template.py                      # 配置模板（新模块复制此文件）
-│   └── demo_marketplace.py               # 示例：校园二手交易
+├── seeds/                                # seedkit 业务数据配置（统一 YAML 驱动）
+│   ├── seed_data.yml                     # 所有模块数据的统一声明（modules → models → rows）
+│   └── README.md                         # YAML Schema 速查（引用语法 / 图片 / 幂等）
 │
 ├── deploy/                               # 部署配置
 │   ├── Dockerfile                        # Docker 镜像构建文件（多阶段：前端构建 + 运行时）

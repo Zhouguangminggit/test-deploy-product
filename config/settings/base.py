@@ -48,13 +48,14 @@ THIRD_PARTY_APPS: list[str] = [
     "django_celery_results",
 ]
 
-# 项目本地应用：utils 提供 templatetags 等通用能力；accounts 用户账户；files 文件管理；audit 操作日志；notifications 消息通知
+# 项目本地应用：utils 提供 templatetags 等通用能力；accounts 用户账户；files 文件管理；audit 操作日志；notifications 消息通知；seedkit 数据初始化
 LOCAL_APPS = [
     "utils",
     "apps.accounts",
     "apps.files",
     "apps.audit",
     "apps.notifications",
+    "apps.seedkit",
 ]
 
 ADMIN_UI = validate_admin_ui(env("ADMIN_UI", default="unfold"))
@@ -184,10 +185,14 @@ LOG_LEVEL = env("LOG_LEVEL", default="INFO")
 LOG_DIR = env("LOG_DIR", default="")
 LOGGING = build_logging_config(LOG_LEVEL)
 
-# ----------------------------- Pixabay 图片资源 -----------------------------
-# 种子数据填充时自动从 Pixabay 下载场景图片；API 密钥在 .env 中配置
+# ----------------------------- seedkit 数据初始化 -----------------------------
+# 统一 YAML 配置驱动业务数据初始化（详见 apps/seedkit）：
+# - PIXABAY_API_KEY：从 Pixabay 下载场景图片；留空则跳过图片下载（仅填充结构化数据）；
+# - SEEDKIT_CONFIG：统一业务数据配置文件路径（本地脚本与线上中台触发加载同一份）；
+# - SEEDKIT_CACHE_DIR：Pixabay 图片本地缓存目录，命中缓存不重复请求。
 PIXABAY_API_KEY = env("PIXABAY_API_KEY", default="")
-SEED_CACHE_DIR = BASE_DIR / env("SEED_CACHE_DIR", default="media/seed_cache")
+SEEDKIT_CONFIG = BASE_DIR / env("SEEDKIT_CONFIG", default="seeds/seed_data.yml")
+SEEDKIT_CACHE_DIR = BASE_DIR / env("SEEDKIT_CACHE_DIR", default="media/seed_cache")
 
 # ----------------------------- 后台主题全局配置 -----------------------------
 # 依据 ADMIN_UI 合并对应主题的完整配置：

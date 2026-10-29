@@ -11,7 +11,8 @@ docs/
 │   ├── functional-description.md   # 功能说明（基础、核心、创新功能）
 │   ├── technology-stack.md   # 技术栈说明
 │   ├── catalog-architecture.md     # 目录架构说明
-│   └── seed-data-guide.md   # 种子数据填充指南
+│   ├── seed-data-guide.md   # 种子数据填充指南（seedkit 统一 YAML 方案）
+│   └── seedkit-platform-integration.md  # seedkit 中台接入说明（SSH 触发 / 轮询）
 ├── deployment/               # 部署文档
 │   ├── local-deployment.md   # 本地部署说明
 │   └── production-deployment.md    # 生产部署说明

@@ -108,6 +108,12 @@ def _unfold_sidebar_navigation() -> list[dict[str, Any]]:
                     "link": reverse_lazy("admin:django_celery_results_taskresult_changelist"),
                     "permission": _has_perm("django_celery_results.view_taskresult"),
                 },
+                {
+                    "title": "数据初始化",
+                    "icon": "database",
+                    "link": reverse_lazy("admin:seedkit_seedrun_changelist"),
+                    "permission": _has_perm("seedkit.view_seedrun"),
+                },
             ],
         },
     ]

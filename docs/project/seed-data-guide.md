@@ -1,186 +1,163 @@
-# 种子数据填充指南
+# 种子数据填充指南（seedkit）
 
-> 业务模块开发完成后，通过种子数据一键填充真实业务数据和场景图片。
+> 业务系统所有模块的演示 / 初始化数据统一在 `seeds/seed_data.yml` 中**显式声明**，
+> 本地 `make seed-data` 与线上中台触发（`seedkit_run`）加载同一份配置。
+> 本文讲清 Schema、引用语法、图片规则、幂等与命令；速查见 `seeds/README.md`，
+> 中台接入见 `docs/project/seedkit-platform-integration.md`。
 
-## 前置条件
+## 一、设计原则
 
-1. 在 [Pixabay](https://pixabay.com/api/docs/) 注册免费账号，获取 API Key
-2. 在 `.env` 中配置 `PIXABAY_API_KEY=你的密钥`
-3. 确保业务模块的模型和迁移已就绪（`make migrate`）
+- **统一配置**：一个 YAML 描述所有业务模块数据，环境一致、可评审、可版本化；
+- **显式声明**：逐行写明字段值，不使用随机造数（faker），保证内容真实可控；
+- **关联真实**：行与行之间用 `ref` 引用，确保「手机 / 电脑挂电子器材、书籍挂图书」这类
+  业务归属正确，图片关键词与行主题匹配；
+- **fail-fast 校验**：任一模型 / 字段 / 引用非法，整体报错、**不落一条数据**；
+- **可追溯**：每次运行一条 `SeedRun`，逐条过程日志 `SeedRunLog`，后台与 `seedkit_status` 可查。
 
-## 快速开始
-
-```bash
-# 查看所有可用种子模块
-make seed-list
-
-# 填充所有模块（含图片下载）
-make seed
-
-# 填充所有模块（跳过图片，开发调试推荐）
-make seed-no-images
-
-# 只填充指定模块
-make seed-module MODULE=my_module
-
-# 预览模式（不实际写入）
-uv run python scripts/seed_data.py --dry-run
-```
-
-## 新增业务模块种子配置（3 步）
-
-### 第一步：复制模板
+## 二、快速开始
 
 ```bash
-cp seeds/_template.py seeds/my_module.py
+make seed-data                                  # 本地同步初始化（等价 seedkit_run --trigger local --sync）
+uv run python manage.py seedkit_run --module products --sync   # 只跑某模块
+uv run python manage.py seedkit_run --refresh --sync           # 强制重填
 ```
 
-### 第二步：编辑配置
+基座当前 `modules: {}` 为空，执行会输出「无可执行模块」并正常结束（非报错）。
 
-打开 `seeds/my_module.py`，按模板注释填写：
+## 三、配置结构
 
-```python
-MODULE = {
-    "name": "my_module",  # 模块唯一标识
-    "description": "模块描述",
-    "dependencies": [],  # 依赖的其他模块（拓扑排序）
-    "models": [
-        {
-            "model": "app_label.ModelName",  # Django 模型路径
-            "count": 10,  # 生成记录数
-            "fields": {
-                "title": {"type": "title", "pool": ["标题1", "标题2"]},
-                "price": {"type": "float", "min": 9.9, "max": 999.9},
-                "author": {"type": "fk", "ref": "accounts.User", "strategy": "random"},
-                "cover": {"type": "image", "field": "cover", "keywords": ["book", "reading"]},
-            },
-        },
-    ],
-}
+```yaml
+version: 1
+modules:
+  <模块名>:                     # --module 过滤单位，一个业务主题一个模块
+    models:
+      - model: <app_label>.<ModelName>   # 必填
+        images:                 # 选填，模型级图片字段配置
+          - field: <图片字段名>
+            keywords_from: <行内字段名>
+            keywords: <固定回退关键词>
+        rows:                   # 必填，逐行显式声明
+          - <字段名>: <值>
+            _key: <自定义被引用键>   # 选填
 ```
 
-### 第三步：执行填充
+- 模型按 YAML **声明顺序**执行；被 `ref` 引用的模型**必须先声明**（loader 校验，杜绝悬空引用）。
+- 顶层 `version` 目前固定为 `1`。
 
-```bash
-make seed
+### 字段值类型
+
+| 类型 | 写法 | 说明 |
+| --- | --- | --- |
+| 标量 | `name: 电子器材`、`price: 2999` | 直接赋值 |
+| 日期 / 时间 | `released_at: 2024-05-01` | 按字段类型自动 `to_python` 转换（Date/DateTime/Time/Decimal） |
+| 空值 | `desc: null` | 显式置空（字段需 `null=True`） |
+| 外键 | `category: { ref: "products.Category.电子器材" }` 或 `category: 3` | `ref` 引用或直接给主键标量 |
+| 多对多 | `tags: { refs: [ { ref: "products.Tag.数码" } ] }` 或 `tags: ["products.Tag.数码"]` | 列表内可混用 dict/字符串引用 |
+| 图片行级覆盖 | `cover: { keywords: "book reading" }` | 覆盖该行的图片搜索关键词 |
+
+## 四、引用语法（关联真实性核心）
+
+`ref` 格式：`<app_label>.<Model>.<键>`。
+
+- **键的取值**：缺省为目标模型**首个唯一非主键字段**的值（如 `Category.name`）；也可用主键数字；
+  还可在目标行用 `_key: xxx` 自定义被引用键，引用处写 `ref: "app.Model.xxx"`。
+- **解析顺序**：先查本次运行已创建对象的注册表，未命中回退查数据库
+  （支持引用 `init-data` 等既有数据）。找不到即报错。
+- **声明先后**：`ref` 只能指向**已声明**的模型；指向后声明模型会在加载期直接报错。
+
+示例——手机 / 电脑 / 平板挂「电子器材」，书籍挂「图书」：
+
+```yaml
+- model: products.Product
+  rows:
+    - title: 手机
+      category: { ref: "products.Category.电子器材" }
+    - title: 书籍
+      category: { ref: "products.Category.图书" }
 ```
 
-## 字段类型速查
+## 五、图片配置（Pixabay）
 
-| type | 说明 | 常用参数 |
-|------|------|----------|
-| `username` | 拼音用户名 | `prefix` |
-| `name` | 中文姓名 | - |
-| `email` | 邮箱地址 | - |
-| `phone` | 手机号 | - |
-| `password` | 固定密码 | `value`（默认 test123456） |
-| `text` | 随机文本 | `pool`（自定义文本池） |
-| `title` | 随机标题 | `pool`（自定义标题池） |
-| `choice` | 从列表选取 | `choices` |
-| `int` | 随机整数 | `min`, `max` |
-| `float` | 随机浮点数 | `min`, `max`, `precision` |
-| `datetime` | 随机时间 | `days_back` |
-| `bool` | 随机布尔值 | `true_rate` |
-| `fk` | 外键关联 | `ref`, `strategy` |
-| `image` | Pixabay 图片 | `field`, `keywords` 或 `keywords_field` |
-| `const` | 固定值 | `value` |
+对模型的 `ImageField / FileField`，在 `images` 中声明字段与关键词来源：
 
-## 行模板模式（rows）
-
-当同一记录的多个字段需要业务关联时（如商品标题与分类匹配、图片关键词与商品对应），使用 `rows` 代替 `count`：
-
-```python
-{
-    "model": "products.Product",
-    "rows": [
-        {
-            "title": "iPhone 15 Pro",  # 直接赋值
-            "category": "数码电子",  # 字符串自动解析为外键
-            "pixabay_keywords": ["smartphone"],  # 非模型字段，供图片引用
-            "price": {"type": "float", "min": 5999, "max": 7999},  # 字段配置覆盖
-            "cover_image": {
-                "type": "image",
-                "field": "cover_image",
-                "keywords_field": "pixabay_keywords",
-            },
-        },
-        # ... 更多行
-    ],
-    "fields": {},  # 基础字段配置（与行内合并，行优先）
-}
+```yaml
+images:
+  - field: cover
+    keywords_from: title      # 关键词取行内 title 的值（图文匹配）
+    # keywords: "campus"      # 或该模型所有行共用的固定回退关键词
 ```
 
-**规则**：
+**关键词优先级**：行内 `{ keywords: "..." }` > 模型级 `keywords_from` > 模型级 `keywords`。
 
-- 行内非 dict 值直接赋给模型字段（字符串外键自动解析为关联对象）
-- 行内 dict 值（含 `type`）作为字段配置覆盖 `fields` 中的同名配置
-- `keywords_field` 让图片字段引用行内的关键词列表，实现图片与商品主题匹配
-- 行内非模型字段（如 `pixabay_keywords`）不会传给 Django ORM
+- 命中关键词后从 [Pixabay](https://pixabay.com/api/docs/) 检索下载，按图片 id 落盘缓存去重；
+- 同字段多行按搜索结果**轮换分配不同图片**，避免全部同图；
+- 图片存入 `MEDIA_ROOT`（容器已挂载卷），写入对应字段；
+- **未配置 `PIXABAY_API_KEY` 时跳过图片下载**，仅填充结构化数据（不报错）。
 
-## 图片后处理（post_process_images）
+## 六、幂等与 refresh
 
-用于 generate 模式下子表图片需匹配父表主题的场景。在所有记录创建完成后，按 FK 关联对象重新分配图片。
+- **默认幂等**：某模型**已有数据则整体跳过**（记 `skipped`），只填充空模型，可安全重复执行；
+- **`--refresh`**：按声明**逆序**（先子表后父表，规避外键约束）清空 YAML 声明模型的全部数据后重填。
+  ⚠️ 会删除该模型所有行，线上使用前确认无需保留真实数据。
 
-支持三种关键词解析策略（按优先级）：
+## 七、校验规则（加载期 fail-fast）
 
-| 策略 | 配置键 | 适用场景 |
-|------|--------|----------|
-| 字段读取 | `keywords_from_field` | 关联模型本身存储了关键词（如 Article.tags） |
-| 标题匹配 | `title_keyword_map` | 标题与图片主题存在明确映射（如商品名 → 搜索词） |
-| 固定回退 | `keywords` | 所有实例共享同一主题（如公司 Logo） |
+任一不满足即整体报错、不写库，错误信息含模块 / 模型 / 行号：
 
-```python
-{
-    "model": "app_label.GalleryImage",
-    "count": 30,
-    "fields": {
-        "item": {"type": "fk", "ref": "app_label.Item", "strategy": "cycle"},
-        "image": {"type": "image", "field": "image", "keywords": ["default"]},
-    },
-    "post_process_images": {
-        "fk_field": "item",  # 外键字段名
-        "title_field": "title",  # 可选，默认自动检测 title/name
-        "title_keyword_map": {  # 策略 2：标题模式匹配
-            "关键词A": ["pixabay_search_1"],
-            "关键词B": ["pixabay_search_2"],
-        },
-        "keywords": ["fallback_keyword"],  # 策略 3：回退关键词
-        "image_fields": ["image"],  # 需重新分配的图片字段
-    },
-}
+- `model` 必须能解析为已安装模型；`rows` 内键必须是模型真实字段（拒绝未知字段与反向关系）；
+- **必填字段**（editable、非自增主键、无 default、非 null/blank）每行都要提供
+  （由 `images` 负责填充的图片字段从必填集中剔除）；
+- `ref` / `refs` 指向的模型须与关联模型一致，且不指向后声明模型；
+- `images.field` 必须是 `FileField / ImageField`，`keywords_from` 必须是真实字段。
+
+## 八、完整示例（分类 → 商品，含图片）
+
+```yaml
+version: 1
+modules:
+  products:
+    models:
+      - model: products.Category
+        rows:
+          - name: 电子器材
+          - name: 图书
+      - model: products.Product
+        images:
+          - field: cover
+            keywords_from: title          # 封面图按商品标题检索，图文匹配
+        rows:
+          - title: 手机
+            category: { ref: "products.Category.电子器材" }
+            price: 2999
+          - title: 电脑
+            category: { ref: "products.Category.电子器材" }
+            price: 5999
+          - title: 书籍
+            category: { ref: "products.Category.图书" }
+            price: 59
+            cover: { keywords: "book reading" }   # 行级覆盖：更精准的英文搜索词
 ```
 
-## 外键关联策略
+执行后：手机 / 电脑归属「电子器材」、书籍归属「图书」，各自封面图按标题（书籍按覆盖词）检索。
 
-| strategy | 说明 |
-|----------|------|
-| `random` | 随机选取一个已创建的目标对象 |
-| `round_robin` | 轮询分配（均匀分布） |
-| `first` | 始终关联第一个 |
-| `cycle` | 按实例索引轮询 |
-| `specific` | 通过 `filter` 条件指定 |
+## 九、命令与运行追溯
 
-## 生产部署
+| 命令 | 用途 |
+| --- | --- |
+| `seedkit_run [--module X] [--refresh] [--trigger T] [--sync]` | 触发初始化；缺省异步投递 Celery，`--sync` 本地同步执行 |
+| `seedkit_status [--run-id N] [--tail M]` | 查询运行状态、统计与日志（JSON） |
 
-部署到线上服务器后，一键填充数据：
+- 异步触发 stdout 输出 `{"run_id":…, "task_id":…, "status":"pending"}`，据此轮询 `seedkit_status`；
+- 状态机：`pending → running → success / partial / failed`；`partial` 表示部分模块失败
+  （失败模块已回滚，成功模块保留）；
+- 运行记录与日志落库，Django 后台「数据初始化」菜单只读可查。
 
-```bash
-# 确保服务器 .env 中配置了 PIXABAY_API_KEY
-make seed-prod
-```
+## 十、常见问题
 
-图片下载到服务器 `media/seed_cache/`，数据写入生产数据库。
-
-建议首次部署执行顺序：
-
-```bash
-make migrate && make init-data && make seed-prod
-```
-
-## 注意事项
-
-- 图片缓存位于 `media/seed_cache/`，同一关键词只下载一次，后续复用
-- Pixabay API 限制 100 次/分钟，引擎内置自动节流，大量图片时请耐心等待
-- 配置中未声明的字段使用模型默认值或留空
-- User 模型自动使用 `create_user` 创建（密码正确哈希）
-- 单模块填充失败不影响其他模块（独立事务）
+| 现象 | 原因与处理 |
+| --- | --- |
+| 报「引用未找到」 | `ref` 的键在注册表与库中都无匹配；核对目标行是否声明、键值是否一致 |
+| 报「引用了后声明的模型」 | 被引用模型写在了引用它的模型之后；调整声明顺序，父表在前 |
+| 图片没下载 | 未配置 `PIXABAY_API_KEY`（会跳过图片）；或关键词无检索结果（日志有 warning） |
+| 数据没变化 | 模型已有数据被幂等跳过；需重填加 `--refresh` |
+| 报「缺少必填字段」 | 某行漏了 non-null 且无默认值的字段；按提示补齐 |
