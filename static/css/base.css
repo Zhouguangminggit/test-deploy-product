@@ -8,7 +8,13 @@
  *   语义化组件类与 30+ 内置主题（详见 https://daisyui.com）。
  */
 
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+
+/* 工具类扫描范围（相对本文件）：新增模板/输出 HTML 的代码目录时需同步补充 */
+@source "../../templates";
+@source "../../apps";
+@source "../../utils";
+@source "../js";
 @plugin "daisyui";
 
 @layer base {

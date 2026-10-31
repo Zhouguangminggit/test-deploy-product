@@ -18,6 +18,8 @@ RUN npm ci || npm install
 # Tailwind v4 自动扫描项目内容生成用到的类（CSS-first 配置，无需 tailwind.config.js）
 COPY static/ ./static/
 COPY templates/ ./templates/
+COPY apps/ ./apps/
+COPY utils/ ./utils/
 
 # 产物输出到 /app/static/css/dist/base.css
 RUN npm run build
