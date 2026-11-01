@@ -4,6 +4,8 @@
 .github
 .idea
 .vscode
+.qoder
+.trae
 
 # Python
 .venv
@@ -27,8 +29,11 @@ db.sqlite3-journal
 staticfiles
 media/*
 !media/.gitkeep
+logs
+temp
 
-# 前端（镜像内多阶段重新构建）
+# 前端：镜像内单独一层 npm ci 安装依赖并编译 Tailwind，
+# 宿主机产物不入构建上下文（缩小上下文，也不覆盖镜像内依赖）
 node_modules
 static/css/dist
 

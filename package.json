@@ -5,7 +5,9 @@
   "description": "django-scaffold 前端样式构建链（Tailwind CSS v4 + DaisyUI）",
   "scripts": {
     "build": "mkdir -p static/css/dist && tailwindcss -i static/css/base.css -o static/css/dist/base.css --minify",
-    "dev": "mkdir -p static/css/dist && tailwindcss -i static/css/base.css -o static/css/dist/base.css --watch"
+    "dev": "mkdir -p static/css/dist && tailwindcss -i static/css/base.css -o static/css/dist/base.css --watch",
+    "build:win": "if not exist \"static\\css\\dist\" mkdir \"static\\css\\dist\" && tailwindcss -i static/css/base.css -o static/css/dist/base.css --minify",
+    "dev:win": "if not exist \"static\\css\\dist\" mkdir \"static\\css\\dist\" && tailwindcss -i static/css/base.css -o static/css/dist/base.css --watch"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.0",

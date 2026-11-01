@@ -9,7 +9,7 @@
 #
 # 服务器目录约定（DEPLOY_PATH）：
 #   deploy/docker-compose.yml     # 由流水线自动更新
-#   deploy/.env                   # 由流水线自动生成（APP_IMAGE / APP_PORT / ALLOWED_HOSTS / PIXABAY_API_KEY），
+#   deploy/.env                   # 由流水线自动生成（APP_IMAGE / APP_PORT / ALLOWED_HOSTS / PIXABAY_API_KEY / SITE_LOGO），
 #                                 #   compose 自动读取，因此中台系统/人工 SSH 无需 export 任何变量
 #
 # 手动操作（首次需先 docker login <ACR地址>，私有仓库拉取凭证按用户持久化）：
@@ -32,6 +32,8 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       # seedkit 图片下载密钥：由 CI 写入 deploy/.env，compose 自动读取注入
       PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+      # 导航栏 logo 公网 URL：由 CI 写入 deploy/.env，留空时前台显示文字徽标
+      SITE_LOGO: ${SITE_LOGO:-}
     # 宿主机端口在执行 compose 的环境中通过 APP_PORT 覆盖，默认 8000
     ports:
       - "${APP_PORT:-8000}:8000"

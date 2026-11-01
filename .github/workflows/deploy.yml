@@ -30,6 +30,8 @@ on:
       COMPOSE_SERVICE: { description: "compose 服务名，默认 web", required: false }
       DEPLOY_BRANCH:   { description: "部署分支，默认触发 ref", required: false }
       PIXABAY_API_KEY: { description: "Pixabay API 密钥（敏感，seedkit 图片下载）", required: false }
+      SITE_LOGO:       { description: "导航栏logo公网URL（中台自动注入）", required: false }  
+
 
 concurrency:
   group: production-deploy
@@ -207,8 +209,8 @@ jobs:
             # 推送最新 sha 镜像到 :latest），中台仅执行 up -d 也能拉到最新版本；
             # 本次部署仍显式使用 sha tag，保证与流水线产物严格对应
             # 用 printf 而非 heredoc，避免 YAML 块缩进被写进 .env 行首
-            printf 'APP_IMAGE=%s\nAPP_PORT=%s\nALLOWED_HOSTS=%s\nPIXABAY_API_KEY=%s\n' \
-              "${REPO}:latest" "${{ env.APP_PORT }}" "${ALLOWED}" "${{ github.event.inputs.PIXABAY_API_KEY || secrets.PIXABAY_API_KEY }}" > deploy/.env
+            printf 'APP_IMAGE=%s\nAPP_PORT=%s\nALLOWED_HOSTS=%s\nPIXABAY_API_KEY=%s\nSITE_LOGO=%s\n' \
+              "${REPO}:latest" "${{ env.APP_PORT }}" "${ALLOWED}" "${{ github.event.inputs.PIXABAY_API_KEY || secrets.PIXABAY_API_KEY }}" "${{ github.event.inputs.SITE_LOGO || secrets.SITE_LOGO }}" > deploy/.env
 
             echo "==> 拉取镜像 ${REPO}:${{ github.sha }}"
             APP_IMAGE="${REPO}:${{ github.sha }}" ALLOWED_HOSTS="${ALLOWED}" $COMPOSE pull "${{ env.COMPOSE_SERVICE }}"

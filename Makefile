@@ -17,7 +17,8 @@ export DJANGO_SETTINGS_MODULE
 	init-data seed-data export-db import-db \
 	lint format test \
 	worker beat \
-	docker-build docker-up docker-down clean
+	docker-build docker-up docker-down \
+	package clean
 
 help: ## 显示全部可用命令
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -100,6 +101,11 @@ docker-up: ## 启动容器编排（默认本地镜像，可用 APP_IMAGE=xxx mak
 
 docker-down: ## 停止并移除容器编排
 	$(COMPOSE) down
+
+# ------------------------------ 打包交付 ------------------------------
+
+package: ## 打包项目源码为 zip
+	@$(PYTHON) scripts/package.py
 
 # ------------------------------ 清理 ------------------------------
 

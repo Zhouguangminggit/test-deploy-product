@@ -47,7 +47,8 @@
 
 ## 四、部署后服务器运维命令
 
-流水线每次部署会在服务器生成 `deploy/.env`（含 `APP_IMAGE` / `APP_PORT` / `ALLOWED_HOSTS`），
+流水线每次部署会在服务器生成 `deploy/.env`（含 `APP_IMAGE` / `APP_PORT` / `ALLOWED_HOSTS` /
+`PIXABAY_API_KEY` / `SITE_LOGO`），
 Docker Compose 会自动读取 compose 文件同目录的 `.env`，因此**手动或中台系统执行命令前
 不需要 export 任何变量**。中台系统的「启用/停用」即直接执行下表中的 up/down 命令。
 

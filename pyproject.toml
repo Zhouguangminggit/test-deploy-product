@@ -38,6 +38,8 @@ dev = [
 [tool.uv]
 # 本项目为应用（非可发布库），uv 只管理虚拟环境与依赖，不构建/安装自身
 package = false
+# 国内镜像加速（阿里云 PyPI 镜像）
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
 
 [tool.ruff]
 line-length = 100
