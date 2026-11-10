@@ -27,8 +27,7 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       # 数据库等配置由镜像内 .env 提供；使用外部 RDS，跳过入口脚本的数据库等待
       SKIP_DB_WAIT: "1"
-      # 浏览器访问用的域名/IP，由 CI 导出；必须保留 localhost,127.0.0.1，
-      # 否则容器内 healthcheck（访问 127.0.0.1:8000）会被 Django 返回 400
+      # 浏览器访问用的域名/IP，由 CI 导出；本机地址供部署时探测使用
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       # seedkit 图片下载密钥：由 CI 写入 deploy/.env，compose 自动读取注入
       PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
@@ -39,19 +38,6 @@ services:
       - "${APP_PORT:-8000}:8000"
     volumes:
       - media_files:/app/media
-    healthcheck:
-      # python:3.12-slim 自带 python，无需额外安装 curl
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=3)",
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
 
   # Celery worker：消费 Redis 队列执行异步任务（与 web 共用镜像与 .env 配置）
   worker:

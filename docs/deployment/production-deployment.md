@@ -77,7 +77,7 @@ COMPOSE="docker compose -f deploy/docker-compose.yml"
 | 进入容器内执行命令（如 Django shell） | `docker compose -f deploy/docker-compose.yml exec web python manage.py shell` |
 | 磁盘/镜像占用清理 | `docker image prune -f` |
 
-健康检查逻辑：流水线部署后轮询容器 `healthz` 接口最多约 2.5 分钟，`healthy` 即部署成功；
+健康检查逻辑：流水线部署后临时轮询 web 容器的 `/healthz/` 接口最多约 2.5 分钟，请求成功即部署成功；容器运行期间不再定时探测。
 失败会自动输出 `web` 容器最近 100 行日志到 Actions 页面，排错先看那里。
 
 ## 五、新手 FAQ
@@ -89,4 +89,4 @@ COMPOSE="docker compose -f deploy/docker-compose.yml"
 | `SSH 连接失败` | 公钥没加到服务器 `authorized_keys`；报错信息里会打印私钥对应公钥指纹，与服务器上的比对 |
 | 构建推送 ACR 失败 `denied` | `ACR_USERNAME/ACR_PASSWORD` 错误或凭证过期，去 ACR 控制台重设访问凭证 |
 | 部署成功但浏览器 400/打不开 | `APP_HOST` 没配或配错；确认安全组已放行 `APP_PORT` |
-| 容器一直 unhealthy | `$COMPOSE logs web` 看报错；常见为镜像内 `.env` 的数据库/Redis 连不上 |
+| 部署健康检查超时 | `$COMPOSE logs web` 看报错；常见为镜像内 `.env` 的数据库/Redis 连不上 |

@@ -221,18 +221,11 @@ jobs:
 
             echo "==> 等待健康检查通过"
             for i in $(seq 1 30); do
-              cid=$($COMPOSE ps -q "${{ env.COMPOSE_SERVICE }}")
-              status=$(docker inspect -f "{{.State.Health.Status}}" "$cid" 2>/dev/null || echo starting)
-              echo "第 ${i} 次检查：${status}"
-              if [ "$status" = "healthy" ]; then
+              if $COMPOSE exec -T web python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=3)"; then
                 echo "部署成功"
                 exit 0
               fi
-              if [ "$status" = "unhealthy" ]; then
-                $COMPOSE logs --tail=100 "${{ env.COMPOSE_SERVICE }}"
-                echo "健康检查失败"
-                exit 1
-              fi
+              echo "第 ${i} 次检查未通过"
               sleep 5
             done
 
