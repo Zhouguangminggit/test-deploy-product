@@ -51,6 +51,7 @@ RUN cp .env.example .env
 
 # 覆盖前端构建产物（放在 COPY . . 之后，避免被宿主机的旧产物覆盖）
 COPY --from=frontend-builder /app/static/css/dist ./static/css/dist
+COPY --from=frontend-builder /app/static/js/dist ./static/js/dist
 
 # 预建运行时可写目录并降权到非 root 用户
 RUN mkdir -p /app/staticfiles /app/media \

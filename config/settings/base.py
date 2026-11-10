@@ -189,7 +189,7 @@ LOGGING = build_logging_config(LOG_LEVEL)
 # 统一 YAML 配置驱动业务数据初始化（详见 apps/seedkit）：
 # - PIXABAY_API_KEY：从 Pixabay 下载场景图片；留空则跳过图片下载（仅填充结构化数据）；
 # - SEEDKIT_CONFIG：统一业务数据配置文件路径（本地脚本与线上中台触发加载同一份）；
-# - SEEDKIT_CACHE_DIR：Pixabay 图片本地缓存目录，命中缓存不重复请求。
+# - SEEDKIT_CACHE_DIR：Pixabay 检索结果与图片的本地缓存目录。
 PIXABAY_API_KEY = env("PIXABAY_API_KEY", default="")
 SEEDKIT_CONFIG = BASE_DIR / env("SEEDKIT_CONFIG", default="seeds/seed_data.yml")
 SEEDKIT_CACHE_DIR = BASE_DIR / env("SEEDKIT_CACHE_DIR", default="media/seed_cache")

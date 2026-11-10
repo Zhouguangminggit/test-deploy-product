@@ -41,7 +41,7 @@ check: ## Django 框架自检
 
 # ------------------------------ 前端样式 ------------------------------
 
-css: ## 构建 Tailwind CSS（产物 static/css/dist/base.css）
+css: ## 构建 Tailwind CSS 和后台图表静态资源
 	$(NPM) run build
 
 css-watch: ## 监听模式构建 Tailwind CSS

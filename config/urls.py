@@ -16,6 +16,8 @@ from django.shortcuts import render
 from django.urls import include, path, re_path
 from django.views.static import serve
 
+from utils.admin_dashboard import dashboard
+
 
 def home(request: HttpRequest):
     """前台首页（占位，展示基座与后续业务模块入口）。"""
@@ -50,6 +52,11 @@ urlpatterns = [
     path("notifications/", include("apps.notifications.urls")),
     path("healthz/", healthz, name="healthz"),
 ]
+
+if settings.ADMIN_UI == "simpleui":
+    urlpatterns.insert(
+        1, path("admin/dashboard/", admin.site.admin_view(dashboard), name="admin-dashboard")
+    )
 
 # 静态与媒体文件：
 # - 开发环境（dev 配置 DEBUG=False 用于预览错误页，故额外按 settings 模块判断）由 Django

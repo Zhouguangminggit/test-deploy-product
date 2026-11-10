@@ -33,7 +33,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--refresh",
             action="store_true",
-            help="强制重填：先按声明逆序清空相关模型，再重新写入",
+            help="仅版本 1 支持：按声明逆序清空相关模型，再重新写入",
         )
         parser.add_argument(
             "--trigger",
@@ -44,7 +44,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--sync",
             action="store_true",
-            help="同步执行（本地 / 调试用），不投递 Celery",
+            help="同步执行，不投递 Celery",
         )
 
     def handle(self, *args, **options) -> None:

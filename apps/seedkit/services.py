@@ -57,13 +57,19 @@ def create_run(
     )
 
 
-def _mark_running(run: SeedRun, log: RunLogger) -> None:
+def _mark_running(run: SeedRun, log: RunLogger) -> bool:
+    started_at = timezone.now()
+    if not SeedRun.objects.filter(pk=run.pk, status=SeedRunStatus.PENDING).update(
+        status=SeedRunStatus.RUNNING, started_at=started_at
+    ):
+        run.refresh_from_db()
+        return False
     run.status = SeedRunStatus.RUNNING
-    run.started_at = timezone.now()
-    run.save(update_fields=["status", "started_at"])
+    run.started_at = started_at
     log.info(
         f"开始初始化：trigger={run.trigger} modules={run.modules or '全部'} refresh={run.refresh}"
     )
+    return True
 
 
 def _finish(run: SeedRun, log: RunLogger, stats: SeedStats) -> SeedRun:
@@ -99,7 +105,8 @@ def _fail(run: SeedRun, log: RunLogger, message: str) -> SeedRun:
 def execute_run(run: SeedRun) -> SeedRun:
     """同步执行一次运行：加载配置 → 引擎填充 → 状态流转。异常不外泄，统一落到状态与日志。"""
     log = RunLogger(run)
-    _mark_running(run, log)
+    if not _mark_running(run, log):
+        return run
 
     try:
         config = load_config()
@@ -128,7 +135,7 @@ def execute_run(run: SeedRun) -> SeedRun:
         log.warning(run.error_message)
         return run
     except SeedConfigError as exc:
-        return _fail(run, log, f"配置校验失败：{exc}")
+        return _fail(run, log, f"种子执行失败：{exc}")
     except Exception as exc:  # noqa: BLE001 - 兜底：任何未预期异常都落 failed，不把栈抛给中台
         logger.exception("数据初始化运行 {} 失败", run.pk)
         return _fail(run, log, f"初始化异常：{exc}")

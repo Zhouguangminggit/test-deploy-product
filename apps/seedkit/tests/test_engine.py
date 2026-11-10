@@ -156,7 +156,7 @@ def test_image_model_level_fixed_keyword(tmp_path, seedkit_tables, fake_log, moc
     config = _load(tmp_path, data)
     stats = run_config(config, modules=None, refresh=False, log=fake_log)
 
-    assert mock_pixabay.search_keywords == ["electronics", "electronics"]
+    assert mock_pixabay.search_keywords == ["electronics"]
     assert len(set(mock_pixabay.downloaded_ids)) == 2
     assert stats.images == 2
 

@@ -36,6 +36,7 @@ temp
 # 宿主机产物不入构建上下文（缩小上下文，也不覆盖镜像内依赖）
 node_modules
 static/css/dist
+static/js/dist
 
 # 文档与非必要文件
 catalog.md

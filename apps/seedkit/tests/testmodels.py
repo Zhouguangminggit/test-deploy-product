@@ -34,12 +34,24 @@ class SeedTag(models.Model):
 class SeedProduct(models.Model):
     """商品：外键挂分类、图片封面、多对多标签、金额与日期字段（类型转换）。"""
 
-    title = models.CharField(max_length=100)
+    title = models.CharField(max_length=100, unique=True)
     category = models.ForeignKey(SeedCategory, on_delete=models.CASCADE, related_name="products")
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     released_at = models.DateField(null=True, blank=True)
     cover = models.ImageField(upload_to="seedkit_test/", blank=True)
     tags = models.ManyToManyField(SeedTag, blank=True, related_name="products")
+
+    class Meta:
+        app_label = "seedkit"
+        managed = False
+
+
+class SeedProductImage(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    product = models.ForeignKey(
+        SeedProduct, on_delete=models.CASCADE, related_name="content_images"
+    )
+    image = models.ImageField(upload_to="seedkit_test/")
 
     class Meta:
         app_label = "seedkit"

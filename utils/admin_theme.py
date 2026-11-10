@@ -200,10 +200,10 @@ def _build_simpleui_settings(*, site_name: str, site_logo: str) -> dict[str, Any
     """
     settings_map: dict[str, Any] = {
         # ---- 基础配置 ----
-        "SIMPLEUI_HOME_PAGE": "/",  # 首页按钮跳转到站点前台首页
+        "SIMPLEUI_HOME_PAGE": reverse_lazy("admin-dashboard"),
         "SIMPLEUI_HOME_TITLE": site_name,
         "SIMPLEUI_HOME_ICON": "fa fa-home",
-        "SIMPLEUI_INDEX": "/",  # 登录后默认落地页
+        "SIMPLEUI_INDEX": reverse_lazy("admin:index"),
         "SIMPLEUI_DEFAULT_THEME": "admin.lte.css",
         "SIMPLEUI_LOGO": site_logo or "",
         # ---- 净化项：关闭上报分析与登录页粒子动画 ----

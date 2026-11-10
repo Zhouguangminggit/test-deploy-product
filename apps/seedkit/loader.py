@@ -21,7 +21,7 @@ from typing import Any
 import yaml
 from django.apps import apps
 from django.conf import settings
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.db import models
 
 
@@ -34,7 +34,7 @@ class ImageSeed:
     """单个图片字段的填充配置。"""
 
     field: str
-    keywords_from: str | None = None  # 关键词取自行内该字段的值
+    keywords_from: str | None = None  # 本行字段，或沿正向外键读取关联字段
     keywords: str | None = None  # 固定回退关键词
 
 
@@ -47,6 +47,7 @@ class ModelSeed:
     rows: list[dict[str, Any]]
     images: list[ImageSeed] = field(default_factory=list)
     order: int = 0  # 全局扁平声明顺序，用于引用先后校验
+    match_by: tuple[str, ...] = ()
 
 
 @dataclass
@@ -63,6 +64,8 @@ class SeedConfig:
 
     version: int = 1
     modules: list[ModuleSeed] = field(default_factory=list)
+    assets: dict[str, Path] = field(default_factory=dict)
+    lookups: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
 
     def module_names(self) -> list[str]:
         return [m.name for m in self.modules]
@@ -86,6 +89,16 @@ def _natural_key_field(model: type[models.Model]) -> models.Field | None:
     return None
 
 
+def row_key(seed: ModelSeed, row: dict[str, Any]) -> str | None:
+    """优先使用显式别名，其次使用单字段匹配键或旧版自然键。"""
+    key = row.get("_key")
+    if key is None and len(seed.match_by) == 1:
+        key = row.get(seed.match_by[0])
+    if key is None and not seed.match_by and (natural := _natural_key_field(seed.model)):
+        key = row.get(natural.name)
+    return str(key) if key is not None else None
+
+
 def _required_field_names(model: type[models.Model], image_fields: set[str]) -> set[str]:
     """计算每行必须提供的字段名集合。
 
@@ -100,7 +113,7 @@ def _required_field_names(model: type[models.Model], image_fields: set[str]) -> 
             continue
         if not f.editable:
             continue
-        if f.has_default():
+        if f.has_default() or f.has_db_default():
             continue
         if f.null or f.blank:
             continue
@@ -161,6 +174,7 @@ def _validate_row(
     row: dict[str, Any],
     row_no: int,
     declared_order: dict[str, int],
+    assets: dict[str, Path],
 ) -> None:
     """校验单行数据：字段存在性、必填、引用合法性。"""
     model = model_seed.model
@@ -169,7 +183,7 @@ def _validate_row(
 
     for key, value in row.items():
         if key == "_key":
-            if not isinstance(value, (str, int)):
+            if type(value) not in (str, int) or not str(value).strip():
                 raise SeedConfigError(f"{ctx}：_key 必须是字符串或整数，得到 {value!r}")
             continue
         try:
@@ -197,13 +211,12 @@ def _validate_row(
                 declared_order=declared_order,
                 current_order=model_seed.order,
             )
-        elif (
-            isinstance(field_obj, models.FileField)
-            and isinstance(value, dict)
-            and "keywords" not in value
-        ):
-            # 图片字段行级覆盖：{keywords: "..."}，必须显式给出关键词
-            raise SeedConfigError(f"{ctx}：图片字段 '{key}' 的覆盖配置必须含 'keywords'")
+        elif isinstance(field_obj, models.FileField) and isinstance(value, dict):
+            if set(value) == {"asset"}:
+                if not isinstance(value["asset"], str) or value["asset"] not in assets:
+                    raise SeedConfigError(f"{ctx}：文件字段 '{key}' 引用了未配置的资源")
+            elif set(value) != {"keywords"} or not isinstance(value["keywords"], str):
+                raise SeedConfigError(f"{ctx}：文件字段 '{key}' 应配置 asset 或 keywords")
 
     # 必填字段校验
     required = _required_field_names(model, image_fields)
@@ -222,8 +235,8 @@ def _validate_fk_value(
 ) -> None:
     """外键值：``{ref: "..."}`` 或标量主键。"""
     if isinstance(value, dict):
-        if "ref" not in value:
-            raise SeedConfigError(f"{ctx}：外键字段 '{field_obj.name}' 的 dict 值必须含 'ref'")
+        if set(value) != {"ref"}:
+            raise SeedConfigError(f"{ctx}：外键字段 '{field_obj.name}' 应使用 {{ref: 键}}")
         _validate_ref_value(
             value["ref"],
             related_model=field_obj.related_model,
@@ -246,17 +259,21 @@ def _validate_m2m_value(
     """多对多值：``{refs: [...]}``、``[{ref: ...}, ...]`` 或标量列表。"""
     items: Any
     if isinstance(value, dict):
-        if "refs" not in value:
-            raise SeedConfigError(f"{ctx}：多对多字段 '{field_obj.name}' 的 dict 值必须含 'refs'")
+        if set(value) != {"refs"}:
+            raise SeedConfigError(f"{ctx}：多对多字段 '{field_obj.name}' 应使用 {{refs: 列表}}")
         items = value["refs"]
     else:
         items = value
     if not isinstance(items, list):
         raise SeedConfigError(f"{ctx}：多对多字段 '{field_obj.name}' 必须是列表")
     for item in items:
-        if isinstance(item, dict) and "ref" in item:
+        if isinstance(item, dict) and set(item) != {"ref"}:
+            raise SeedConfigError(
+                f"{ctx}：多对多字段 '{field_obj.name}' 的引用项应使用 {{ref: 键}}"
+            )
+        if isinstance(item, dict) or (isinstance(item, str) and item.count(".") >= 2):
             _validate_ref_value(
-                item["ref"],
+                item.get("ref") if isinstance(item, dict) else item,
                 related_model=field_obj.related_model,
                 field_name=field_obj.name,
                 ctx=ctx,
@@ -276,18 +293,25 @@ def _validate_images(model_seed: ModelSeed, ctx: str) -> None:
         if not isinstance(field_obj, models.FileField):
             raise SeedConfigError(f"{ctx}：'{img.field}' 不是图片/文件字段")
         if img.keywords_from:
-            try:
-                model._meta.get_field(img.keywords_from)
-            except FieldDoesNotExist as exc:
-                raise SeedConfigError(
-                    f"{ctx}：图片 '{img.field}' 的 keywords_from 字段 '{img.keywords_from}' 不存在"
-                ) from exc
+            source_model = model
+            parts = img.keywords_from.split(".")
+            for index, name in enumerate(parts):
+                try:
+                    source = source_model._meta.get_field(name)
+                except FieldDoesNotExist as exc:
+                    raise SeedConfigError(
+                        f"{ctx}：图片 '{img.field}' 的 keywords_from 字段 '{img.keywords_from}' 不存在"
+                    ) from exc
+                if index < len(parts) - 1 and isinstance(source, models.ForeignKey):
+                    source_model = source.related_model
+                elif index < len(parts) - 1 or source.is_relation or not source.concrete:
+                    raise SeedConfigError(
+                        f"{ctx}：keywords_from '{img.keywords_from}' 应指向普通字段"
+                    )
 
 
 # ----------------------------- 顶层加载 -----------------------------
-def _parse_model_entry(
-    module_name: str, entry: Any, order: int, declared_order: dict[str, int]
-) -> ModelSeed:
+def _parse_model_entry(module_name: str, entry: Any, order: int, version: int) -> ModelSeed:
     if not isinstance(entry, dict):
         raise SeedConfigError(
             f"模块 '{module_name}'：models 项必须是映射，得到 {type(entry).__name__}"
@@ -309,8 +333,13 @@ def _parse_model_entry(
         raise SeedConfigError(f"模型 {label}：'images' 必须是列表")
     images: list[ImageSeed] = []
     for item in raw_images:
-        if not isinstance(item, dict) or "field" not in item:
+        if not isinstance(item, dict) or not isinstance(item.get("field"), str):
             raise SeedConfigError(f"模型 {label}：images 项必须是含 'field' 的映射")
+        if any(
+            item.get(key) is not None and not isinstance(item[key], str)
+            for key in ("keywords", "keywords_from")
+        ):
+            raise SeedConfigError(f"模型 {label}：keywords 与 keywords_from 必须是字符串")
         images.append(
             ImageSeed(
                 field=item["field"],
@@ -325,9 +354,63 @@ def _parse_model_entry(
         rows=rows,
         images=images,
         order=order,
+        match_by=_parse_match_by(model, entry.get("match_by"), version),
     )
     _validate_images(seed, ctx=f"模型 {label}")
     return seed
+
+
+def _parse_match_by(model: type[models.Model], value: Any, version: int) -> tuple[str, ...]:
+    if value is None and version == 1:
+        return ()
+    ctx = f"模型 {model._meta.label}"
+    fields = [value] if isinstance(value, str) else value
+    if not isinstance(fields, list) or not fields or not all(isinstance(f, str) for f in fields):
+        raise SeedConfigError(f"{ctx}：match_by 必须指定一个字段或一组字段")
+    try:
+        field_objects = [model._meta.get_field(name) for name in fields]
+    except FieldDoesNotExist as exc:
+        raise SeedConfigError(f"{ctx}：match_by 包含未知字段") from exc
+    if any(
+        f.name != name or not f.concrete or f.is_relation or isinstance(f, models.FileField)
+        for f, name in zip(field_objects, fields, strict=True)
+    ):
+        raise SeedConfigError(f"{ctx}：match_by 仅支持具体的非关联、非文件字段")
+    unique_sets = [set(names) for names in model._meta.unique_together]
+    unique_sets.extend(
+        set(c.fields)
+        for c in model._meta.constraints
+        if isinstance(c, models.UniqueConstraint)
+        and c.fields
+        and c.condition is None
+        and c.deferrable is None
+        and c.nulls_distinct is None
+        and not c.include
+        and not c.opclasses
+    )
+    unique_sets.extend({f.name} for f in field_objects if f.unique)
+    if len(set(fields)) != len(fields) or set(fields) not in unique_sets:
+        raise SeedConfigError(f"{ctx}：match_by 必须对应数据库唯一约束")
+    return tuple(fields)
+
+
+def _config_file(root: Path, value: Any, *, ctx: str) -> Path:
+    if not isinstance(value, str) or not value or Path(value).is_absolute():
+        raise SeedConfigError(f"{ctx}：请配置相对路径")
+    try:
+        path = (root / value).resolve(strict=True)
+    except (OSError, ValueError) as exc:
+        raise SeedConfigError(f"{ctx}：文件不存在或超出配置目录：{value}") from exc
+    if not path.is_relative_to(root) or not path.is_file():
+        raise SeedConfigError(f"{ctx}：文件不存在或超出配置目录：{value}")
+    return path
+
+
+def _read_yaml(path: Path) -> Any:
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise SeedConfigError(f"读取 YAML 失败（{path}）：{exc}") from exc
 
 
 def load_config(path: str | Path | None = None) -> SeedConfig:
@@ -340,18 +423,26 @@ def load_config(path: str | Path | None = None) -> SeedConfig:
     if not config_path.exists():
         return SeedConfig()
 
-    try:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise SeedConfigError(f"YAML 解析失败（{config_path}）：{exc}") from exc
+    raw = _read_yaml(config_path)
 
     if raw is None:
         return SeedConfig()
     if not isinstance(raw, dict):
         raise SeedConfigError("配置顶层必须是映射（含 version / modules）")
 
-    version = int(raw.get("version", 1))
-    modules_raw = raw.get("modules") or {}
+    version = raw.get("version", 1)
+    if type(version) is not int or version not in (1, 2):
+        raise SeedConfigError("version 仅支持整数 1 或 2")
+    root = config_path.resolve().parent
+    raw_assets = raw.get("assets", {})
+    if not isinstance(raw_assets, dict) or not all(isinstance(key, str) for key in raw_assets):
+        raise SeedConfigError("assets 必须是资源键到相对路径的映射")
+    assets = {
+        key: _config_file(root, value, ctx=f"资源 '{key}'") for key, value in raw_assets.items()
+    }
+    modules_raw = raw.get("modules")
+    if modules_raw is None:
+        modules_raw = {}
     if not isinstance(modules_raw, dict):
         raise SeedConfigError("'modules' 必须是映射：模块名 → {models: [...]}")
 
@@ -360,6 +451,10 @@ def load_config(path: str | Path | None = None) -> SeedConfig:
     declared_order: dict[str, int] = {}
     order = 0
     for module_name, module_body in modules_raw.items():
+        if isinstance(module_body, dict) and set(module_body) == {"file"}:
+            module_body = _read_yaml(
+                _config_file(root, module_body["file"], ctx=f"模块 '{module_name}'")
+            )
         if not isinstance(module_body, dict):
             raise SeedConfigError(f"模块 '{module_name}'：配置必须是映射（含 models）")
         models_raw = module_body.get("models") or []
@@ -367,20 +462,49 @@ def load_config(path: str | Path | None = None) -> SeedConfig:
             raise SeedConfigError(f"模块 '{module_name}'：'models' 必须是列表")
         module_seed = ModuleSeed(name=str(module_name))
         for entry in models_raw:
-            seed = _parse_model_entry(module_name, entry, order, declared_order)
+            seed = _parse_model_entry(module_name, entry, order, version)
+            if version == 2 and seed.label.lower() in declared_order:
+                raise SeedConfigError(f"模型 {seed.label} 重复声明")
             declared_order.setdefault(seed.label.lower(), order)
             module_seed.models.append(seed)
             order += 1
         modules.append(module_seed)
 
     # 第二遍：逐行校验（此时 declared_order 已完整，可判定引用先后）
+    lookups = {}
     for module_seed in modules:
         for model_seed in module_seed.models:
+            identities = set()
             for row_no, row in enumerate(model_seed.rows, start=1):
                 if not isinstance(row, dict):
                     raise SeedConfigError(
                         f"模型 {model_seed.label} 第 {row_no} 行：必须是映射，得到 {type(row).__name__}"
                     )
-                _validate_row(model_seed, row, row_no, declared_order)
+                _validate_row(model_seed, row, row_no, declared_order, assets)
+                if not model_seed.match_by:
+                    continue
+                ctx = f"模型 {model_seed.label} 第 {row_no} 行"
+                match = {name: row.get(name) for name in model_seed.match_by}
+                if any(
+                    value is None or value == "" or isinstance(value, (list, dict))
+                    for value in match.values()
+                ):
+                    raise SeedConfigError(f"{ctx}：match_by 字段必须提供非空标量")
+                try:
+                    identity = tuple(
+                        model_seed.model._meta.get_field(name).get_prep_value(value)
+                        for name, value in match.items()
+                    )
+                    hash(identity)
+                except (TypeError, ValueError, ValidationError) as exc:
+                    raise SeedConfigError(f"{ctx}：match_by 值无效") from exc
+                if identity in identities:
+                    raise SeedConfigError(f"{ctx}：match_by 值重复")
+                identities.add(identity)
+                if (key := row_key(model_seed, row)) is not None:
+                    ref = (model_seed.label.lower(), key)
+                    if ref in lookups:
+                        raise SeedConfigError(f"{ctx}：引用键 '{key}' 重复")
+                    lookups[ref] = match
 
-    return SeedConfig(version=version, modules=modules)
+    return SeedConfig(version=version, modules=modules, assets=assets, lookups=lookups)

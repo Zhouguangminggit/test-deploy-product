@@ -13,7 +13,7 @@ from django.db import connection
 from utils.pixabay import PixabayImage
 
 # 导入即把测试模型注册到 seedkit app registry（managed=False，不产生迁移）
-from .testmodels import SeedCategory, SeedProduct, SeedTag
+from .testmodels import SeedCategory, SeedProduct, SeedProductImage, SeedTag
 
 
 class FakeLog:
@@ -42,8 +42,10 @@ def seedkit_tables(django_db_setup, django_db_blocker):
         se.create_model(SeedCategory)
         se.create_model(SeedTag)
         se.create_model(SeedProduct)
+        se.create_model(SeedProductImage)
     yield
     with django_db_blocker.unblock(), connection.schema_editor() as se:
+        se.delete_model(SeedProductImage)
         se.delete_model(SeedProduct)
         se.delete_model(SeedTag)
         se.delete_model(SeedCategory)

@@ -5,6 +5,10 @@
 """
 
 import pytest
+from django.conf import settings
+from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
 
@@ -80,7 +84,7 @@ def test_simpleui_theme_settings_content():
     settings_map = build_theme_settings("simpleui", site_name="测试站点", site_logo="")
     assert "UNFOLD" not in settings_map
     # 基础配置
-    assert settings_map["SIMPLEUI_HOME_PAGE"] == "/"
+    assert settings_map["SIMPLEUI_INDEX"] == reverse("admin:index")
     assert settings_map["SIMPLEUI_HOME_TITLE"] == "测试站点"
     # 净化项：关闭分析上报
     assert settings_map["SIMPLEUI_ANALYSIS"] is False
@@ -93,3 +97,33 @@ def test_admin_index_reverses_and_login_page_loads(client):
     resp = client.get("/admin/login/")
     # 未登录访问后台首页会重定向到登录页，登录页本身应 200
     assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+@pytest.mark.skipif(settings.ADMIN_UI != "simpleui", reason="需要 ADMIN_UI=simpleui")
+def test_simpleui_home_counts_only_visible_records(client, monkeypatch):
+    url = reverse("admin-dashboard")
+    assert client.get(url).status_code == 302
+
+    user_model = get_user_model()
+    staff = user_model.objects.create_user(username="dashboard-staff", is_staff=True)
+    user_model.objects.create_user(username="another-user")
+    client.force_login(staff)
+    assert client.get(url).context["summary"] == []
+
+    staff.user_permissions.add(
+        Permission.objects.get(codename="view_user", content_type__app_label="accounts")
+    )
+    model_admin = admin.site.get_model_admin(user_model)
+    monkeypatch.setattr(
+        model_admin, "get_queryset", lambda request: user_model.objects.filter(pk=request.user.pk)
+    )
+    index = client.get(reverse("admin:index"))
+    assert url in index.content.decode()
+
+    response = client.get(url)
+    assert response["X-Frame-Options"] == "SAMEORIGIN"
+    assert response.context["summary"] == [{"name": "用户账户", "value": 1}]
+    assert response.context["modules"][0]["models"][0]["url"] == reverse(
+        "admin:accounts_user_changelist"
+    )

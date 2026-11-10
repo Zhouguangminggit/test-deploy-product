@@ -6,16 +6,19 @@ API 文档：https://pixabay.com/api/docs/
 约定与官方限制：
 - 密钥取自 ``settings.PIXABAY_API_KEY``；留空时 ``search_images`` 返回空列表，
   由调用方（seedkit 引擎）跳过图片下载，仅填充结构化数据；
-- 官方要求结果缓存 24h、限流 100 次/60s：下载结果按图片 id 落盘缓存
-  （``settings.SEEDKIT_CACHE_DIR``），命中缓存不重复请求；
-- 所有 HTTP 请求带 timeout；网络 / 鉴权 / 限流异常统一抛 ``PixabayError``
-  并记 loguru 日志，不静默吞错。
+- 检索响应缓存 24 小时，下载结果按图片 id 落盘，命中缓存不重复请求；
+- 所有 HTTP 请求带 timeout；检索异常统一抛 ``PixabayError``，日志不含 API 密钥。
 """
 
 from __future__ import annotations
 
+import json
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import requests
 from django.conf import settings
@@ -29,6 +32,7 @@ REQUEST_TIMEOUT = 15
 DEFAULT_PER_PAGE = 20
 # 缓存图片统一存为 .jpg（webformatURL 返回 640px JPEG）
 CACHE_SUFFIX = ".jpg"
+SEARCH_CACHE_SECONDS = 24 * 60 * 60
 
 
 class PixabayError(RuntimeError):
@@ -76,6 +80,28 @@ def _cache_dir(dest_dir: str | Path | None = None) -> Path:
     return path
 
 
+@contextmanager
+def _cache_write(target: Path):
+    """仅发布完整文件，避免并发读取未写完的缓存。"""
+    with NamedTemporaryFile(dir=target.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            yield stream
+            stream.close()
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def _read_search_cache(target: Path) -> list[PixabayImage] | None:
+    try:
+        if time.time() - target.stat().st_mtime < SEARCH_CACHE_SECONDS:
+            return [PixabayImage.from_hit(hit) for hit in json.loads(target.read_bytes())]
+    except (OSError, TypeError, ValueError, AttributeError):
+        return None
+    return None
+
+
 def search_images(
     keyword: str,
     *,
@@ -94,7 +120,7 @@ def search_images(
     - per_page 钳制到官方区间 [3, 200]；
     - HTTP / 网络异常 → 记日志并抛 ``PixabayError``。
     """
-    keyword = (keyword or "").strip()
+    keyword = (keyword or "").strip()[:100]
     if not keyword:
         return []
     if not is_configured():
@@ -113,19 +139,27 @@ def search_images(
         "safesearch": "true" if safe_search else "false",
         "order": order,
     }
+    digest = sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()
+    target = _cache_dir() / f"search-{digest}.json"
+    if (cached := _read_search_cache(target)) is not None:
+        return cached
+
     try:
         resp = requests.get(PIXABAY_API_URL, params=params, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
-        payload = resp.json()
+        hits = resp.json().get("hits", []) or []
+        images = [PixabayImage.from_hit(hit) for hit in hits]
     except requests.RequestException as exc:
-        logger.error("Pixabay 检索失败：keyword={} err={}", keyword, exc)
-        raise PixabayError(f"Pixabay 检索失败：{exc}") from exc
-    except ValueError as exc:  # JSON 解析失败
-        logger.error("Pixabay 响应解析失败：keyword={} err={}", keyword, exc)
-        raise PixabayError(f"Pixabay 响应解析失败：{exc}") from exc
+        status = getattr(exc.response, "status_code", None)
+        reason = f"HTTP {status}" if status else type(exc).__name__
+        logger.warning("Pixabay 检索失败：keyword={} reason={}", keyword, reason)
+        raise PixabayError(f"Pixabay 检索失败（{reason}）") from None
+    except (ValueError, TypeError, AttributeError):
+        logger.warning("Pixabay 响应解析失败：keyword={}", keyword)
+        raise PixabayError("Pixabay 响应解析失败") from None
 
-    hits = payload.get("hits", []) or []
-    images = [PixabayImage.from_hit(hit) for hit in hits]
+    with _cache_write(target) as stream:
+        stream.write(json.dumps(hits).encode())
     logger.debug("Pixabay 检索：keyword={} 命中={}", keyword, len(images))
     return images
 
@@ -146,16 +180,16 @@ def download_image(image: PixabayImage, dest_dir: str | Path | None = None) -> P
     try:
         resp = requests.get(url, timeout=REQUEST_TIMEOUT, stream=True)
         resp.raise_for_status()
-        with target.open("wb") as fh:
+        with _cache_write(target) as fh:
             for chunk in resp.iter_content(chunk_size=8192):
                 if chunk:
                     fh.write(chunk)
     except requests.RequestException as exc:
         logger.error("Pixabay 图片下载失败：id={} url={} err={}", image.id, url, exc)
-        # 清理可能写坏的半成品文件，避免下次误命中缓存
-        target.unlink(missing_ok=True)
         return None
 
+    if not target.stat().st_size:
+        return None
     logger.debug("Pixabay 图片已缓存：id={} path={}", image.id, target)
     return target
 

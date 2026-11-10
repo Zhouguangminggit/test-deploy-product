@@ -50,8 +50,9 @@ def _hits(*ids):
 
 
 @pytest.fixture
-def api_key(settings):
+def api_key(settings, tmp_path):
     settings.PIXABAY_API_KEY = "test-key"
+    settings.SEEDKIT_CACHE_DIR = tmp_path / "pixabay"
     return "test-key"
 
 
@@ -74,6 +75,10 @@ def test_search_images_success(api_key, monkeypatch):
     assert captured["params"]["key"] == "test-key"
     assert captured["params"]["q"] == "手机"
     assert captured["params"]["safesearch"] == "true"
+    monkeypatch.setattr(
+        pixabay.requests, "get", lambda *a, **k: pytest.fail("相同搜索应复用本地缓存")
+    )
+    assert pixabay.search_images("手机") == images
 
 
 def test_search_images_skips_without_key(settings, monkeypatch):
@@ -109,8 +114,11 @@ def test_search_images_per_page_clamped(api_key, monkeypatch):
 
 
 def test_search_images_http_error_raises(api_key, monkeypatch):
-    monkeypatch.setattr(pixabay.requests, "get", lambda *a, **k: _FakeResponse(status_ok=False))
-    with pytest.raises(PixabayError):
+    def fail(*args, **kwargs):
+        raise requests.ConnectionError("https://pixabay.com/api/?key=test-key")
+
+    monkeypatch.setattr(pixabay.requests, "get", fail)
+    with pytest.raises(PixabayError, match=r"^Pixabay 检索失败（ConnectionError）$"):
         pixabay.search_images("手机")
 
 
