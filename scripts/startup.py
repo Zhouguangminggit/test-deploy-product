@@ -362,7 +362,8 @@ def start_server(host: str, port: int) -> None:
     """启动开发服务器"""
     step(f"启动开发服务器 → http://{host}:{port}")
 
-    print("\n  🚀 服务器即将启动，按 Ctrl+C 停止\n")
+    print("\n  🚀 服务器即将启动，按 Ctrl+C 停止")
+    print("  如产品需要授权，请在浏览器打开页面并联网激活。\n")
 
     manage = [VENV_PYTHON, "manage.py"]
     run_cmd([*manage, "runserver", f"{host}:{port}"], check=False)

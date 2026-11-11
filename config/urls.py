@@ -58,6 +58,7 @@ urlpatterns = [
     path("files/", include("apps.files.urls")),
     path("notifications/", include("apps.notifications.urls")),
     path("healthz/", healthz, name="healthz"),
+    path("license/", include("apps.licensing.urls")),
 ]
 
 if settings.ADMIN_UI == "simpleui":

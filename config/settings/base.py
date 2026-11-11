@@ -5,6 +5,7 @@
 - 通用能力层 utils 作为本地应用注册，以支持 {% load common_tags %}。
 """
 
+import os
 from pathlib import Path
 
 import environ
@@ -22,6 +23,8 @@ env = environ.Env(
     TIME_ZONE=(str, "Asia/Shanghai"),
     LANGUAGE_CODE=(str, "zh-hans"),
 )
+# 免检只能来自进程环境，不能从交付包的 .env 加载。
+_license_bypass_environment = os.environ.get("LICENSE_BYPASS", "false")
 # 加载根目录 .env（存在才读取，不覆盖已有环境变量）
 env.read_env(str(BASE_DIR / ".env"))
 
@@ -56,12 +59,19 @@ LOCAL_APPS = [
     "apps.audit",
     "apps.notifications",
     "apps.seedkit",
+    "apps.licensing",
 ]
 
 ADMIN_UI = validate_admin_ui(env("ADMIN_UI", default="unfold"))
 ADMIN_THEME_APPS = build_third_party_apps(ADMIN_UI)
 
-INSTALLED_APPS = ADMIN_THEME_APPS + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+INSTALLED_APPS = (
+    ADMIN_THEME_APPS
+    + ["apps.licensing"]
+    + DJANGO_APPS
+    + THIRD_PARTY_APPS
+    + [app for app in LOCAL_APPS if app != "apps.licensing"]
+)
 
 # 自定义用户模型（accounts.User 继承 AbstractUser）。
 # 必须在首次迁移前设置；label 为 "accounts"，故写 "accounts.User"。
@@ -70,6 +80,7 @@ AUTH_USER_MODEL = "accounts.User"
 # ----------------------------- 中间件 -----------------------------
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.licensing.middleware.LicenseMiddleware",
     # 生产环境由应用直接提供静态文件（无需独立 Nginx）
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "utils.middleware.RequestMetaMiddleware",
@@ -207,3 +218,10 @@ globals().update(
         debug=DEBUG,
     )
 )
+
+# 产品交付授权（默认关闭）
+LICENSE_ENABLED = env.bool("LICENSE_ENABLED", default=False)
+LICENSE_PRODUCT_ID = env("LICENSE_PRODUCT_ID", default="")
+LICENSE_SERVER_URL = env("LICENSE_SERVER_URL", default="")
+LICENSE_PUBLIC_KEYS = env("LICENSE_PUBLIC_KEYS", default="{}")
+LICENSE_BYPASS = _license_bypass_environment.lower() in {"true", "1", "yes", "on"}

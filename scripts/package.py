@@ -15,13 +15,20 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import sys
 import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
+
+import environ
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 # ── 项目根目录 ────────────────────────────────────────────────────────────────
 
@@ -39,6 +46,7 @@ EXCLUDE_DIRS: set[str] = {
     ".qoder",
     ".trae",
     ".screenshots",
+    ".license",
     # Python 缓存与虚拟环境
     "__pycache__",
     ".venv",
@@ -89,6 +97,11 @@ EXCLUDE_EXTS: set[str] = {
     ".log",
     ".zip",
     ".tar.gz",
+    ".bak",
+    ".tmp",
+    ".pem",
+    ".key",
+    ".hmac",
 }
 
 
@@ -97,6 +110,8 @@ def is_excluded(path: Path) -> bool:
     name = path.name
 
     # 精确文件名匹配
+    if name.endswith(("~", ".old", ".backup")):
+        return True
     if name in EXCLUDE_FILES:
         return True
 
@@ -123,6 +138,71 @@ def is_excluded(path: Path) -> bool:
 # ── 核心打包逻辑 ──────────────────────────────────────────────────────────────
 
 
+def validate_license_config(env_local: Path) -> str:
+    """校验交付包授权配置，不读取构建机环境变量。"""
+
+    class PackageEnv(environ.Env):
+        ENVIRON = {}
+
+    PackageEnv.ENVIRON = {}
+    PackageEnv.read_env(env_local)
+    values = PackageEnv.ENVIRON
+    allowed = {
+        "LICENSE_ENABLED",
+        "LICENSE_PRODUCT_ID",
+        "LICENSE_SERVER_URL",
+        "LICENSE_PUBLIC_KEYS",
+        "LICENSE_BYPASS",
+    }
+    if any(
+        (key.startswith("LICENSE_") and key not in allowed) or key.startswith("PRODUCT_LICENSE_")
+        for key in values
+    ):
+        raise ValueError(".env.local 包含不允许打包的授权配置")
+    enabled_text = values.get("LICENSE_ENABLED", "false").lower()
+    bypass_text = values.get("LICENSE_BYPASS", "false").lower()
+    if enabled_text not in {
+        "true",
+        "false",
+        "1",
+        "0",
+        "yes",
+        "no",
+        "on",
+        "off",
+    } or bypass_text not in {"false", "0", "no", "off", ""}:
+        raise ValueError("授权开关无效或交付包启用了免检")
+    if enabled_text in {"true", "1", "yes", "on"}:
+        try:
+            product = values.get("LICENSE_PRODUCT_ID", "")
+            url = urlsplit(values.get("LICENSE_SERVER_URL", ""))
+            keys = json.loads(values.get("LICENSE_PUBLIC_KEYS", "{}"))
+            if (
+                not re.fullmatch(r"[0-9]+", product)
+                or int(product) <= 0
+                or url.scheme not in {"http", "https"}
+                or not url.hostname
+                or url.username
+                or url.password
+                or url.query
+                or url.fragment
+                or not isinstance(keys, dict)
+                or not keys
+            ):
+                raise ValueError
+            for kid, pem in keys.items():
+                if not kid or not isinstance(
+                    serialization.load_pem_public_key(pem.encode()), Ed25519PublicKey
+                ):
+                    raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError("启用授权时必须配置产品 ID、授权地址和 Ed25519 公钥") from None
+    text = env_local.read_text(encoding="utf-8")
+    if "LICENSE_ENABLED" not in values:
+        text += "\nLICENSE_ENABLED=False\n"
+    return text
+
+
 def build_package() -> Path:
     """执行打包，返回 zip 文件路径"""
     env_local = PROJECT_ROOT / ".env.local"
@@ -130,6 +210,8 @@ def build_package() -> Path:
         print("❌ 错误：缺少 .env.local 文件")
         print("   请先创建 .env.local（仅本地启动配置），打包时将自动生成为 .env")
         sys.exit(1)
+
+    env_content = validate_license_config(env_local)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = PROJECT_ROOT / "dist"
@@ -161,7 +243,7 @@ def build_package() -> Path:
                 shutil.copy2(file_path, dest)
 
         # 将 .env.local 生成为 .env
-        shutil.copy2(env_local, staging_root / ".env")
+        (staging_root / ".env").write_text(env_content, encoding="utf-8")
 
         # 打包为 zip（ZIP_DEFLATED 压缩）
         with zipfile.ZipFile(output_file, "w", zipfile.ZIP_DEFLATED) as zf:
