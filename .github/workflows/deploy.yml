@@ -1,17 +1,15 @@
 name: Deploy
 
-# 双通道部署流水线（保持原有 push 部署行为不变）：
-#   ① push 到 main：自动触发，全部变量取仓库 Secrets（与原配置完全等价，零影响）
-#   ② 中台后台「触发部署」：workflow_dispatch，变量由中台以 inputs 直传，Secrets 兜底
-# 变量解析规则：github.event.inputs.X || secrets.X；敏感值经 inputs 时运行时自动掩码
+# 手动部署流水线：
+#   仅支持手动触发（workflow_dispatch），可由 GitHub 页面或中台后台「触发部署」发起，
+#   变量由中台以 inputs 直传，Secrets 兜底；敏感值经 inputs 时运行时自动掩码
+# 变量解析规则：github.event.inputs.X || secrets.X
 #
 # 中台侧配置约定：workflow_file 填 deploy.yml（与本仓库 .github/workflows/deploy.yml 文件名一致）；
 # 中台自动注入权威值 SSH_HOST=deploy_host、DEPLOY_PATH=deploy_path、APP_PORT=host_port，
 # 其余项在全局/产品变量中以同名 var_key 配置（SSH_USER/SSH_PORT/SSH_KEY/SSH_PASSPHRASE/APP_HOST/
 # ACR_REGISTRY/ACR_NAMESPACE/ACR_REPOSITORY/ACR_USERNAME/ACR_PASSWORD/COMPOSE_SERVICE）
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       SSH_HOST:        { description: "服务器地址（中台自动注入 deploy_host）", required: false }
