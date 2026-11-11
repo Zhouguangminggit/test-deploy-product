@@ -7,13 +7,15 @@
 from django.conf import settings
 from django.http import HttpRequest
 
+from utils.branding import site_logo_url
+
 
 def site_info(request: HttpRequest) -> dict:
     """注入站点信息与当前请求的 request-id。"""
     return {
         "SITE_NAME": getattr(settings, "SITE_NAME", "Django Scaffold"),
         "SITE_DESCRIPTION": getattr(settings, "SITE_DESCRIPTION", "团队产品基座脚手架"),
-        "SITE_LOGO": getattr(settings, "SITE_LOGO", ""),
+        "SITE_LOGO": site_logo_url(request),
         "REQUEST_ID": getattr(request, "request_id", ""),
     }
 

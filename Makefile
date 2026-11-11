@@ -3,6 +3,13 @@
 
 UV ?= uv
 NPM ?= npm
+ifeq ($(OS),Windows_NT)
+CSS_BUILD := build:win
+CSS_WATCH := dev:win
+else
+CSS_BUILD := build
+CSS_WATCH := dev
+endif
 PYTHON := $(UV) run python
 MANAGE := $(PYTHON) manage.py
 COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
@@ -33,7 +40,7 @@ env: ## 生成 .env（不存在时从 .env.example 复制）
 	@test -f .env || cp .env.example .env
 	@echo ".env 已就绪"
 
-run: ## 启动开发服务器（0.0.0.0:8000）
+run: css ## 构建前端资源并启动开发服务器（0.0.0.0:8000）
 	$(MANAGE) runserver 0.0.0.0:8000
 
 check: ## Django 框架自检
@@ -42,10 +49,10 @@ check: ## Django 框架自检
 # ------------------------------ 前端样式 ------------------------------
 
 css: ## 构建 Tailwind CSS 和后台图表静态资源
-	$(NPM) run build
+	$(NPM) run $(CSS_BUILD)
 
 css-watch: ## 监听模式构建 Tailwind CSS
-	$(NPM) run dev
+	$(NPM) run $(CSS_WATCH)
 
 # ------------------------------ 数据库 ------------------------------
 

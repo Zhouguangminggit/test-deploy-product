@@ -130,13 +130,14 @@ AUTH_PASSWORD_VALIDATORS = [
 LANGUAGE_CODE = env("LANGUAGE_CODE")
 TIME_ZONE = env("TIME_ZONE")
 USE_I18N = True
+LOCALE_PATHS = [BASE_DIR / "locale"]
 USE_TZ = True
 
 # ----------------------------- 站点信息 -----------------------------
 # 由 utils.context_processors.site_info 注入模板，供页面头部/标题使用
 SITE_NAME = env("SITE_NAME", default="Django Scaffold")
 SITE_DESCRIPTION = env("SITE_DESCRIPTION", default="团队产品基座脚手架")
-# 导航栏 logo 静态资源路径（如 "images/logo.png"）；留空则显示文字徽标
+# 前后台共用 logo；相对路径由静态资源存储解析，留空显示文字徽标
 SITE_LOGO = env("SITE_LOGO", default="")
 
 # ----------------------------- 静态与媒体文件 -----------------------------
@@ -203,8 +204,6 @@ globals().update(
     build_theme_settings(
         ADMIN_UI,
         site_name=SITE_NAME,
-        site_logo=SITE_LOGO,
         debug=DEBUG,
-        static_url=STATIC_URL,
     )
 )

@@ -4,13 +4,17 @@
 以及在当前 settings（dev 默认 unfold）下后台路由可解析、登录页可访问。
 """
 
+import json
+
 import pytest
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ImproperlyConfigured
+from django.test import override_settings
 from django.urls import reverse
+from django.utils.translation import override
 
 from utils.admin_theme import (
     DEFAULT_ADMIN_UI,
@@ -51,9 +55,7 @@ def test_build_third_party_apps_simpleui():
 
 
 def test_unfold_theme_settings_content():
-    settings_map = build_theme_settings(
-        "unfold", site_name="测试站点", site_logo="", debug=True, static_url="static/"
-    )
+    settings_map = build_theme_settings("unfold", site_name="测试站点", debug=True)
     assert "UNFOLD" in settings_map
     unfold = settings_map["UNFOLD"]
     # 站点品牌联动 SITE_NAME
@@ -67,25 +69,33 @@ def test_unfold_theme_settings_content():
     # 颜色主题与登录页
     assert "primary" in unfold["COLORS"]
     assert unfold["LOGIN"]["redirect_after"] == "/"
-    # 未配置 logo 时不应出现 SITE_LOGO 键
+    assert unfold["SITE_SYMBOL"] == "测"
     assert "SITE_LOGO" not in unfold
 
 
-def test_unfold_theme_settings_with_logo():
-    settings_map = build_theme_settings(
-        "unfold", site_name="S", site_logo="images/logo.png", static_url="static/"
-    )
-    logo = settings_map["UNFOLD"]["SITE_LOGO"]
-    assert logo["light"] == "static/images/logo.png"
-    assert logo["dark"] == "static/images/logo.png"
+@pytest.mark.parametrize(
+    "configured,expected",
+    [
+        ("https://example.com/logo.svg", "https://example.com/logo.svg"),
+        ("/media/logo.svg", "/media/logo.svg"),
+        ("images/logo.svg", "/static/images/logo.svg"),
+    ],
+)
+def test_frontend_and_admin_share_logo(client, admin_user, configured, expected):
+    client.force_login(admin_user)
+    with override_settings(SITE_LOGO=configured, SETTINGS_MODULE=settings.SETTINGS_MODULE):
+        assert f'src="{expected}"' in client.get(reverse("home")).content.decode()
+        index = client.get(reverse("admin:index"))
+        assert f'src="{expected}"' in index.content.decode()
+        assert settings.SITE_NAME in index.content.decode()
 
 
 def test_simpleui_theme_settings_content():
-    settings_map = build_theme_settings("simpleui", site_name="测试站点", site_logo="")
+    settings_map = build_theme_settings("simpleui", site_name="测试站点")
     assert "UNFOLD" not in settings_map
     # 基础配置
     assert settings_map["SIMPLEUI_INDEX"] == reverse("admin:index")
-    assert settings_map["SIMPLEUI_HOME_TITLE"] == "测试站点"
+    assert settings_map["SIMPLEUI_HOME_TITLE"] == "首页"
     # 净化项：关闭分析上报
     assert settings_map["SIMPLEUI_ANALYSIS"] is False
 
@@ -97,6 +107,8 @@ def test_admin_index_reverses_and_login_page_loads(client):
     resp = client.get("/admin/login/")
     # 未登录访问后台首页会重定向到登录页，登录页本身应 200
     assert resp.status_code == 200
+    assert admin.site.index_title == "首页"
+    assert settings.SITE_NAME in resp.content.decode()
 
 
 @pytest.mark.django_db
@@ -120,6 +132,8 @@ def test_simpleui_home_counts_only_visible_records(client, monkeypatch):
     )
     index = client.get(reverse("admin:index"))
     assert url in index.content.decode()
+    assert settings.SITE_NAME in index.content.decode()
+    assert "admin/simpleui-x/img/logo.png" not in index.content.decode()
 
     response = client.get(url)
     assert response["X-Frame-Options"] == "SAMEORIGIN"
@@ -127,3 +141,18 @@ def test_simpleui_home_counts_only_visible_records(client, monkeypatch):
     assert response.context["modules"][0]["models"][0]["url"] == reverse(
         "admin:accounts_user_changelist"
     )
+
+
+@pytest.mark.skipif(settings.ADMIN_UI != "simpleui", reason="需要 ADMIN_UI=simpleui")
+def test_simpleui_celery_results_menu_and_dashboard(admin_client):
+    with override("zh-hans"):
+        assert admin_client.get(reverse("admin:index")).status_code == 200
+        menus = json.loads(admin_client.session["_menus"])
+        results = next(menu for menu in menus if menu["name"] == "异步任务结果")
+        assert results["icon"] == "fas fa-clipboard-check"
+        assert {item["name"]: item["icon"] for item in results["models"]} == {
+            "任务结果": "fas fa-list-check",
+            "任务组结果": "fas fa-layer-group",
+        }
+        overview = admin_client.get(reverse("admin-dashboard"))
+        assert any(item["name"] == "异步任务结果" for item in overview.context["summary"])

@@ -51,8 +51,7 @@ make env        # 生成配置文件 .env（只需一次）
 make install    # 安装依赖（只需一次，耗时几分钟）
 make migrate    # 初始化数据库（只需一次）
 make init-data  # 写入基础数据，含管理员账号（只需一次）
-make css        # 构建前端样式（只需一次）
-make run        # 启动服务
+make run        # 构建前端资源并启动服务
 ```
 
 浏览器访问 <http://127.0.0.1:8000> 即可看到系统；后台管理入口为 <http://127.0.0.1:8000/admin>（默认账号 `admin` / `admin123456`，以 `make init-data` 的输出为准）。
@@ -69,7 +68,7 @@ make run        # 启动服务
 | `python3` / `uv` / `node` / `make` 提示"不是内部或外部命令 / command not found" | 环境变量没配好，回到对应步骤的第 2 步或检查安装是否完成，**并重新打开终端** |
 | `make` 报 `No rule to make target` | 确认终端当前目录在项目根目录（有 Makefile 的那个文件夹） |
 | Windows 装 make 后仍找不到 | 确认加入 Path 的是 MinGW 的 `bin` 目录且已重开终端 |
-| 页面样式错乱 | 执行 `make css` 后再 `make run` |
+| 页面样式错乱 | 重新执行 `make run` 并刷新页面；开发中可另开终端运行 `make css-watch` |
 | 端口 8000 被占用 | 先用 `make run` 的窗口 Ctrl+C 关掉旧服务，或重启电脑后重试 |
 
 异步任务、部署等进阶内容见 `docs/` 目录文档。

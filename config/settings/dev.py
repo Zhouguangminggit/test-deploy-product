@@ -8,6 +8,11 @@ from .base import BASE_DIR, build_logging_config, env
 
 DEBUG = False
 
+# 开发时直接读取 finders 中的当前产物，避免旧 collectstatic 副本覆盖新样式。
+WHITENOISE_AUTOREFRESH = True
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_MAX_AGE = 0
+
 # 开发环境放宽主机限制，便于本机与局域网访问
 ALLOWED_HOSTS = env("ALLOWED_HOSTS", default=["*"])
 

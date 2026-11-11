@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Any
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse_lazy
 
+from utils.branding import site_logo_url
+
 if TYPE_CHECKING:
     from django.http import HttpRequest
 
@@ -109,6 +111,12 @@ def _unfold_sidebar_navigation() -> list[dict[str, Any]]:
                     "permission": _has_perm("django_celery_results.view_taskresult"),
                 },
                 {
+                    "title": "任务组结果",
+                    "icon": "layers",
+                    "link": reverse_lazy("admin:django_celery_results_groupresult_changelist"),
+                    "permission": _has_perm("django_celery_results.view_groupresult"),
+                },
+                {
                     "title": "数据初始化",
                     "icon": "database",
                     "link": reverse_lazy("admin:seedkit_seedrun_changelist"),
@@ -135,30 +143,14 @@ def environment_callback(request: HttpRequest) -> str:
     )
 
 
-def _build_unfold_settings(
-    *, site_name: str, site_logo: str, debug: bool, static_url: str
-) -> dict[str, Any]:
-    """构造 UNFOLD 配置 dict（仅覆盖需要定制的键，其余走 unfold 默认值）。
-
-    debug / static_url 由 base.py 以模块全局传入，避免在 settings 加载期
-    访问 django.conf.settings 造成的懒加载递归。
-    """
-    # 站点 logo：配置了 SITE_LOGO 则拼接静态 URL 作为明暗两套，否则用 material 图标
-    logo = None
-    icon = "dashboard"
-    if site_logo:
-        logo_url = (
-            site_logo
-            if site_logo.startswith(("http://", "https://", "/"))
-            else f"{static_url}{site_logo}"
-        )
-        logo = {"light": logo_url, "dark": logo_url}
-
+def _build_unfold_settings(*, site_name: str, debug: bool) -> dict[str, Any]:
+    """构造 Unfold 配置，保留主题的标题和图标布局。"""
     config: dict[str, Any] = {
         # ---- 站点品牌 ----
         "SITE_TITLE": site_name,
         "SITE_HEADER": site_name,
-        "SITE_SYMBOL": icon,
+        "SITE_SYMBOL": site_name[:1].upper(),
+        "SITE_ICON": site_logo_url,
         "SITE_URL": "/",
         # ---- 顶部栏与扩展开关 ----
         "SHOW_HISTORY": True,
@@ -187,13 +179,11 @@ def _build_unfold_settings(
             }
         },
     }
-    if logo:
-        config["SITE_LOGO"] = logo
     return config
 
 
 # ----------------------------- SimpleUI 配置 -----------------------------
-def _build_simpleui_settings(*, site_name: str, site_logo: str) -> dict[str, Any]:
+def _build_simpleui_settings() -> dict[str, Any]:
     """构造 SIMPLEUI_* 平铺配置（基础配置 + 净化项）。
 
     说明：当前 simpleui 版本已内置本地静态资源（无 CDN 依赖），无需 SIMPLEUI_STATIC_OFFLINE。
@@ -201,11 +191,18 @@ def _build_simpleui_settings(*, site_name: str, site_logo: str) -> dict[str, Any
     settings_map: dict[str, Any] = {
         # ---- 基础配置 ----
         "SIMPLEUI_HOME_PAGE": reverse_lazy("admin-dashboard"),
-        "SIMPLEUI_HOME_TITLE": site_name,
+        "SIMPLEUI_HOME_TITLE": "首页",
         "SIMPLEUI_HOME_ICON": "fa fa-home",
         "SIMPLEUI_INDEX": reverse_lazy("admin:index"),
         "SIMPLEUI_DEFAULT_THEME": "admin.lte.css",
-        "SIMPLEUI_LOGO": site_logo or "",
+        "SIMPLEUI_ICON": {
+            "异步任务结果": "fas fa-clipboard-check",
+            "任务结果": "fas fa-list-check",
+            "任务组结果": "fas fa-layer-group",
+            "Celery Results": "fas fa-clipboard-check",
+            "Task results": "fas fa-list-check",
+            "Group results": "fas fa-layer-group",
+        },
         # ---- 净化项：关闭上报分析与登录页粒子动画 ----
         "SIMPLEUI_ANALYSIS": False,
         "SIMPLEUI_LOGIN_PARTICLES": False,
@@ -220,22 +217,13 @@ def build_theme_settings(
     admin_ui: str,
     *,
     site_name: str,
-    site_logo: str = "",
     debug: bool = False,
-    static_url: str = "static/",
 ) -> dict[str, Any]:
     """按当前主题返回需合并进全局 settings 的配置 dict。"""
     ui = validate_admin_ui(admin_ui)
     if ui == "unfold":
-        return {
-            "UNFOLD": _build_unfold_settings(
-                site_name=site_name,
-                site_logo=site_logo,
-                debug=debug,
-                static_url=static_url,
-            )
-        }
-    return _build_simpleui_settings(site_name=site_name, site_logo=site_logo)
+        return {"UNFOLD": _build_unfold_settings(site_name=site_name, debug=debug)}
+    return _build_simpleui_settings()
 
 
 # ----------------------------- 兼容基类（延迟解析） -----------------------------

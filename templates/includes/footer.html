@@ -1,7 +1,33 @@
-{# 前台页脚 #}
-<footer class="mt-auto border-t border-gray-200 bg-white">
-    <div class="mx-auto flex max-w-5xl flex-col items-center justify-between gap-2 px-4 py-6 text-sm text-gray-500 sm:flex-row">
-        <span>&copy; {% now "Y" %} {{ SITE_NAME }}</span>
-        <span>{{ SITE_DESCRIPTION }}</span>
+<footer class="mt-auto border-t border-base-300 bg-base-200 text-base-content">
+    <div class="mx-auto w-full max-w-6xl px-4">
+        <div class="footer footer-vertical gap-8 py-8 sm:footer-horizontal">
+            <div>
+                <a href="{% url 'home' %}" class="inline-flex items-center gap-2 text-base font-bold">
+                    {% include "includes/brand_mark.html" %}
+                    {{ SITE_NAME }}
+                </a>
+                {% if SITE_DESCRIPTION %}
+                    <p class="max-w-xs leading-relaxed">{{ SITE_DESCRIPTION }}</p>
+                {% endif %}
+            </div>
+            <nav aria-labelledby="footer-site">
+                <h2 id="footer-site" class="footer-title">站点导航</h2>
+                <a class="link link-hover" href="{% url 'home' %}">首页</a>
+                {% if user.is_authenticated %}
+                    <a class="link link-hover" href="{% url 'files:list' %}">文件管理</a>
+                {% endif %}
+            </nav>
+            <nav aria-labelledby="footer-account">
+                <h2 id="footer-account" class="footer-title">账户</h2>
+                {% if user.is_authenticated %}
+                    <a class="link link-hover" href="{% url 'accounts:profile' %}">个人中心</a>
+                    <a class="link link-hover" href="{% url 'notifications:list' %}">消息通知</a>
+                {% else %}
+                    <a class="link link-hover" href="{% url 'accounts:login' %}">登录</a>
+                    <a class="link link-hover" href="{% url 'accounts:register' %}">注册</a>
+                {% endif %}
+            </nav>
+        </div>
+        <p class="border-t border-base-300 py-4 text-xs">&copy; {% now "Y" %} {{ SITE_NAME }}</p>
     </div>
 </footer>

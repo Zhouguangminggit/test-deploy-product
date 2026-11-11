@@ -1,0 +1,10 @@
+{% extends "admin/index.html" %}
+
+{% block logo %}
+    <div class="logo-wrap" v-if="!fold">
+        <div class="float-wrap">
+            <div class="left">{% include "admin/simpleui_brand_mark.html" %}</div>
+            <div class="left"><span>{{ site_header }}</span></div>
+        </div>
+    </div>
+{% endblock %}

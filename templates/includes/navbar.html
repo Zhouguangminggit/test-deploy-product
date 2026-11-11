@@ -5,15 +5,7 @@
         {# ---------- 左：logo + 标题 ---------- #}
         <div class="flex-1 items-center gap-2">
             <a href="{% url 'home' %}" class="flex items-center gap-2">
-                {% if SITE_LOGO %}
-                    <img src="{{ SITE_LOGO }}" alt="{{ SITE_NAME }} logo" class="h-8 w-8 rounded">
-                {% else %}
-                    <span class="avatar placeholder">
-                        <div class="bg-primary text-primary-content h-8 w-8 rounded-lg">
-                            <span class="text-sm font-bold">{{ SITE_NAME|slice:":1"|upper }}</span>
-                        </div>
-                    </span>
-                {% endif %}
+                {% include "includes/brand_mark.html" %}
                 <span class="text-lg font-bold">{{ SITE_NAME }}</span>
             </a>
         </div>

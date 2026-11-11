@@ -44,6 +44,13 @@ def handler500(request: HttpRequest):
     return render(request, "errors/500.html", status=500)
 
 
+admin.site.site_header = settings.SITE_NAME
+admin.site.site_title = settings.SITE_NAME
+admin.site.index_title = "首页"
+if settings.ADMIN_UI == "simpleui":
+    admin.site.index_template = "admin/simpleui_index.html"
+    admin.site.login_template = "admin/simpleui_login.html"
+
 urlpatterns = [
     path("", home, name="home"),
     path("admin/", admin.site.urls),
