@@ -5,6 +5,8 @@
 不引入 HTTPS / HSTS 等强安全配置；Django 默认安全中间件（CSRF、点击劫持防护等）保持启用。
 """
 
+import os
+
 from .base import *  # noqa: F401,F403
 from .base import build_logging_config, env
 
@@ -31,7 +33,7 @@ else:
             "ENGINE": "django.db.backends.mysql",
             "NAME": env("MYSQL_DATABASE", default="django_scaffold"),
             "USER": env("MYSQL_USER", default="root"),
-            "PASSWORD": env("MYSQL_PASSWORD", default=""),
+            "PASSWORD": os.environ.get("MYSQL_PASSWORD", ""),
             "HOST": env("MYSQL_HOST", default="db"),
             "PORT": env("MYSQL_PORT", default="3306"),
             "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60),
@@ -60,7 +62,7 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 
 # ----------------------------- 异步任务（Celery）-----------------------------
-# 生产使用阿里云托管 Redis：REDIS_URL 经镜像内 .env / CI Secret 注入内网连接地址，
+# 生产使用托管 Redis，Compose 将运行配置中的 REDIS_URL 注入容器，
 # 形如 redis://:密码@实例地址:6379/0（见 .env.example 说明）。
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CELERY_BROKER_URL = REDIS_URL

@@ -1,6 +1,6 @@
 # 生产部署入口：在 DEPLOY_PATH 下执行 docker compose --env-file deploy/.env -f deploy/docker-compose.yml。
 # CI 为每个部署目录固定项目名，并在 deploy/.env 中记录镜像和端口。
-# .env.runtime 可覆盖镜像内的 Django 环境默认值，与 Compose 插值配置分开管理。
+# 兼容 .env.runtime 手工配置。中台管理的同名变量由 .env.runtime.managed 覆盖。
 name: ${APP_COMPOSE_PROJECT:?set APP_COMPOSE_PROJECT for this deployment}
 
 services:
@@ -10,17 +10,33 @@ services:
     env_file:
       - path: .env.runtime
         required: false
+      - path: ${APP_MANAGED_ENV_FILE:-.env.runtime.managed}
+        required: false
+        format: raw
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_REDIS_KEY_PREFIX: "${APP_COMPOSE_PROJECT}:"
-      # 数据库等配置可由服务器 .env.runtime 提供；使用外部 RDS，跳过入口脚本的数据库等待
-      SKIP_DB_WAIT: "1"
       # 浏览器访问用的域名/IP，由 CI 导出；本机地址供部署时探测使用
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       # seedkit 图片下载密钥：由 CI 写入 deploy/.env，compose 自动读取注入
       PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
       # 导航栏 logo 公网 URL：由 CI 写入 deploy/.env，留空时前台显示文字徽标
       SITE_LOGO: ${SITE_LOGO:-}
+    # Gunicorn 在迁移和 collectstatic 完成后才开始响应，Worker 和 Beat 以此为启动条件。
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import http.client, sys;
+          conn = http.client.HTTPConnection("127.0.0.1", 8000, timeout=3);
+          conn.request("GET", "/healthz/", headers={"User-Agent": "django-scaffold-healthcheck"});
+          sys.exit(conn.getresponse().status != 200)
+      interval: 5s
+      timeout: 4s
+      start_period: 30s
+      retries: 24
     # 宿主机端口在执行 compose 的环境中通过 APP_PORT 覆盖，默认 8000
     ports:
       - "${APP_PORT:-8000}:8000"
@@ -34,13 +50,15 @@ services:
     env_file:
       - path: .env.runtime
         required: false
+      - path: ${APP_MANAGED_ENV_FILE:-.env.runtime.managed}
+        required: false
+        format: raw
     # 覆盖镜像入口（entrypoint.sh 会跑迁移+Gunicorn），直接起 worker
     entrypoint: []
     command: celery -A config worker -l INFO -c ${CELERY_CONCURRENCY:-2}
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_REDIS_KEY_PREFIX: "${APP_COMPOSE_PROJECT}:"
-      SKIP_DB_WAIT: "1"
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       # seedkit 图片下载实际在 worker 执行，必须注入密钥
       PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
@@ -58,12 +76,14 @@ services:
     env_file:
       - path: .env.runtime
         required: false
+      - path: ${APP_MANAGED_ENV_FILE:-.env.runtime.managed}
+        required: false
+        format: raw
     entrypoint: []
     command: celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_REDIS_KEY_PREFIX: "${APP_COMPOSE_PROJECT}:"
-      SKIP_DB_WAIT: "1"
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
     depends_on:
       web:

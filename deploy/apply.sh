@@ -33,7 +33,7 @@ project="scaffold-$(printf '%.20s' "$hash")"
 printf 'APP_COMPOSE_PROJECT=%s\n' "$project" >> "$stage/compose.env"
 
 # 显式固定项目和配置文件。清除同名 shell 变量，避免覆盖发布文件。
-unset APP_IMAGE APP_PORT ALLOWED_HOSTS PIXABAY_API_KEY SITE_LOGO APP_COMPOSE_PROJECT
+unset APP_IMAGE APP_PORT ALLOWED_HOSTS PIXABAY_API_KEY SITE_LOGO APP_COMPOSE_PROJECT APP_MANAGED_ENV_FILE
 export APP_COMPOSE_PROJECT="$project"
 compose() {
     env_file=$1
@@ -43,11 +43,24 @@ compose() {
         --env-file "$env_file" -f "$compose_file" "$@"
 }
 
+if [ -f "$stage/runtime.env" ]; then
+    export APP_MANAGED_ENV_FILE="$stage/runtime.env"
+elif [ -f deploy/.env.runtime.managed ]; then
+    fail "当前部署由中台管理运行配置，请提供完整的生产运行配置"
+elif [ ! -f deploy/.env.runtime ]; then
+    fail "缺少生产运行配置，请在中台或 GitHub Secrets 中配置"
+fi
+
 compose "$stage/compose.env" "$stage/docker-compose.yml" config --quiet
 compose "$stage/compose.env" "$stage/docker-compose.yml" pull
 cp "$stage/docker-compose.yml" deploy/docker-compose.yml.new
 cp "$stage/compose.env" deploy/.env.new
 chmod 600 deploy/.env.new
+if [ -f "$stage/runtime.env" ]; then
+    install -m 600 "$stage/runtime.env" deploy/.env.runtime.managed.new
+    mv deploy/.env.runtime.managed.new deploy/.env.runtime.managed
+fi
+unset APP_MANAGED_ENV_FILE
 mv deploy/docker-compose.yml.new deploy/docker-compose.yml
 mv deploy/.env.new deploy/.env
 
