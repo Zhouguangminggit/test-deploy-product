@@ -21,6 +21,20 @@ services:
       PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
       # 导航栏 logo 公网 URL：由 CI 写入 deploy/.env，留空时前台显示文字徽标
       SITE_LOGO: ${SITE_LOGO:-}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import http.client, sys;
+          conn = http.client.HTTPConnection("127.0.0.1", 8000, timeout=3);
+          conn.request("GET", "/healthz/", headers={"User-Agent": "django-scaffold-healthcheck"});
+          sys.exit(conn.getresponse().status != 200)
+      interval: 5s
+      timeout: 4s
+      start_period: 30s
+      retries: 24
     # 宿主机端口在执行 compose 的环境中通过 APP_PORT 覆盖，默认 8000
     ports:
       - "${APP_PORT:-8000}:8000"
