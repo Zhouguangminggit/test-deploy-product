@@ -1,0 +1,49 @@
+# 精简 Docker 构建上下文，避免无关/敏感文件进入镜像
+.git
+.gitignore
+.github
+.idea
+.vscode
+.qoder
+.trae
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# 环境变量（通过运行时注入，切勿打入镜像）
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+
+# 数据库与运行时产物
+db.sqlite3
+db.sqlite3-journal
+staticfiles
+media/*
+!media/.gitkeep
+logs
+temp
+
+# 前端：镜像内单独一层 npm ci 安装依赖并编译 Tailwind，
+# 宿主机产物不入构建上下文（缩小上下文，也不覆盖镜像内依赖）
+node_modules
+static/css/dist
+static/js/dist
+
+# 文档与非必要文件
+catalog.md
+README.md
+docs
+database
+
+.license/

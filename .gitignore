@@ -1,0 +1,57 @@
+# ============================== Python ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# ============================== 环境变量 ==============================
+# 保留示例文件，忽略真实密钥
+.env
+.env.*
+!.env.example
+!.env.local
+
+# ============================== Django ==============================
+*.log
+/logs/
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/*
+!/media/.gitkeep
+
+# 数据库导出产物（含业务数据，不入库；initial_data/demo_data 等基线数据正常提交）
+/database/data/export_*.json
+
+# ============================== 前端 / Node ==============================
+node_modules/
+/static/css/dist/
+
+# ============================== 测试与工具缓存 ==============================
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ============================== IDE / OS ==============================
+.idea/
+.vscode/
+.DS_Store
+.qoder/
+.trae
+
+temp/
+
+# ============================== 打包产物 ==============================
+dist/
+
+# 本机授权缓存
+.license/

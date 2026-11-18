@@ -1,0 +1,83 @@
+[project]
+name = "django-scaffold"
+version = "0.1.0"
+description = "团队产品基座脚手架 —— 基于 Django 的工程化产品基座框架"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.2,<5.3",
+    "django-environ>=0.11,<1.0",
+    "pymysql>=1.1,<2.0",
+    # PyMySQL 连接 MySQL 8 默认的 caching_sha2_password 认证时需要
+    "cryptography>=42.0",
+    "pillow>=10.4",
+    "gunicorn>=21.2",
+    # 生产环境直接由应用提供 collectstatic 产物，无需独立 Nginx
+    "whitenoise>=6.7,<7.0",
+    # 统一后端日志出口：拦截标准库 logging 汇入 Loguru（见 utils/log.py）
+    "loguru>=0.7,<1.0",
+    "django-unfold>=0.110.0",
+    "django-simpleui>=2026.1.13",
+    # 异步任务与定时任务：Celery + Redis（broker），周期任务 Admin 管理、结果落库
+    "celery>=5.4,<6.0",
+    "redis>=5.0,<6.0",
+    "django-celery-beat>=2.7,<3.0",
+    "django-celery-results>=2.6,<3.0",
+    # seedkit 数据初始化：Pixabay API HTTP 客户端 + 统一 YAML 配置解析
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.8",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+# 本项目为应用（非可发布库），uv 只管理虚拟环境与依赖，不构建/安装自身
+package = false
+# 国内镜像加速（阿里云 PyPI 镜像）
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    ".venv",
+    "migrations",
+    "node_modules",
+    "static",
+    "media",
+    "staticfiles",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501", # 行宽交由 formatter 处理
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.dev"
+python_files = ["test_*.py", "*_test.py"]
+testpaths = ["tests", "apps"]
+addopts = "-ra --strict-markers"

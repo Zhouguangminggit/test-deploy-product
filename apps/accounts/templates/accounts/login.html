@@ -1,0 +1,35 @@
+{% extends "layouts/frontend.html" %}
+
+{% block title %}登录 · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-md py-8">
+        <div class="card bordered bg-base-100 shadow">
+            <div class="card-body">
+                <h1 class="card-title justify-center text-2xl">登录</h1>
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-error text-sm">
+                        <span>{{ form.non_field_errors.0 }}</span>
+                    </div>
+                {% endif %}
+
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.GET.next }}">
+
+                    {% include "accounts/_field.html" with field=form.username %}
+                    {% include "accounts/_field.html" with field=form.password %}
+
+                    <div class="form-control mt-6">
+                        <button type="submit" class="btn btn-primary w-full">登录</button>
+                    </div>
+                </form>
+
+                <p class="pt-2 text-center text-sm text-base-content/70">
+                    还没有账号？<a href="{% url 'accounts:register' %}" class="link link-primary">立即注册</a>
+                </p>
+            </div>
+        </div>
+    </div>
+{% endblock %}

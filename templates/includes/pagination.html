@@ -1,0 +1,26 @@
+{# 分页组件：配合 utils.pagination.PageResult 使用（DaisyUI join + btn） #}
+{# 用法：{% include "includes/pagination.html" with page_result=pager %} #}
+{% if page_result and page_result.total_pages > 1 %}
+    <nav class="flex flex-wrap items-center justify-between gap-3 py-4 text-sm" aria-label="分页导航">
+        <span class="text-gray-500">
+            共 {{ page_result.total }} 条，第 {{ page_result.page }} / {{ page_result.total_pages }} 页
+        </span>
+
+        <div class="join">
+            <a href="?page={{ page_result.previous_page }}"
+               class="btn btn-outline btn-xs join-item
+                      {% if not page_result.has_previous %}btn-disabled pointer-events-none{% endif %}">上一页</a>
+
+            {% for num in page_result.page_range %}
+                <a href="?page={{ num }}"
+                   class="btn btn-xs join-item
+                          {% if num == page_result.page %}btn-primary
+                          {% else %}btn-outline{% endif %}">{{ num }}</a>
+            {% endfor %}
+
+            <a href="?page={{ page_result.next_page }}"
+               class="btn btn-outline btn-xs join-item
+                      {% if not page_result.has_next %}btn-disabled pointer-events-none{% endif %}">下一页</a>
+        </div>
+    </nav>
+{% endif %}

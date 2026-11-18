@@ -1,0 +1,17 @@
+{# 通用表单字段渲染：label + 控件 + 帮助文本 + 字段错误。用法：{% include "accounts/_field.html" with field=form.username %} #}
+<div class="form-control w-full">
+    <label class="label" for="{{ field.id_for_label }}">
+        <span class="label-text">{{ field.label }}</span>
+    </label>
+    {{ field }}
+    {% if field.help_text %}
+        <label class="label">
+            <span class="label-text-alt text-base-content/60">{{ field.help_text }}</span>
+        </label>
+    {% endif %}
+    {% for error in field.errors %}
+        <label class="label">
+            <span class="label-text-alt text-error">{{ error }}</span>
+        </label>
+    {% endfor %}
+</div>

@@ -1,0 +1,22 @@
+{
+  "name": "django-scaffold-frontend",
+  "version": "0.2.0",
+  "private": true,
+  "description": "django-scaffold 前端样式构建链（Tailwind CSS v4 + DaisyUI）",
+  "scripts": {
+    "build": "npm run build:admin && mkdir -p static/css/dist && tailwindcss -i static/css/base.css -o static/css/dist/base.css --minify",
+    "build:admin": "node -e \"const fs = require('node:fs'); fs.mkdirSync('static/js/dist', { recursive: true }); fs.copyFileSync('node_modules/echarts/dist/echarts.min.js', 'static/js/dist/echarts.min.js')\"",
+    "dev": "mkdir -p static/css/dist && tailwindcss -i static/css/base.css -o static/css/dist/base.css --watch",
+    "build:win": "npm run build:admin && (if not exist \"static\\css\\dist\" mkdir \"static\\css\\dist\") && tailwindcss -i static/css/base.css -o static/css/dist/base.css --minify",
+    "dev:win": "if not exist \"static\\css\\dist\" mkdir \"static\\css\\dist\" && tailwindcss -i static/css/base.css -o static/css/dist/base.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.0",
+    "daisyui": "^5.0.0",
+    "echarts": "6.0.0",
+    "tailwindcss": "^4.3.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

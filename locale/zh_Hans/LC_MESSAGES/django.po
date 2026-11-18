@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: django-scaffold\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+# django-celery-results 的安装包未包含编译后的简体中文目录。
+msgid "Celery Results"
+msgstr "异步任务结果"
+
+msgid "task result"
+msgstr "任务结果"
+
+msgid "task results"
+msgstr "任务结果"
+
+msgid "group result"
+msgstr "任务组结果"
+
+msgid "group results"
+msgstr "任务组结果"

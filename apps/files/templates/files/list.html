@@ -1,0 +1,105 @@
+{% extends "layouts/frontend.html" %}
+{% load static %}
+
+{% block title %}文件管理 · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="space-y-6">
+        {# ---------- 上传区 ---------- #}
+        <div class="card bordered bg-base-100 shadow-sm">
+            <div class="card-body">
+                <h2 class="card-title">上传文件</h2>
+                <form method="post" action="{% url 'files:upload' %}" enctype="multipart/form-data" novalidate>
+                    {% csrf_token %}
+                    <div class="flex flex-col items-stretch gap-4 sm:flex-row sm:items-end">
+                        <div class="form-control w-full flex-1">
+                            <label class="label" for="{{ form.file.id_for_label }}">
+                                <span class="label-text">{{ form.file.label }}</span>
+                            </label>
+                            {{ form.file }}
+                        </div>
+                        <div class="form-control w-full sm:w-48">
+                            <label class="label" for="{{ form.category.id_for_label }}">
+                                <span class="label-text">{{ form.category.label }}</span>
+                            </label>
+                            {{ form.category }}
+                        </div>
+                        <div class="form-control">
+                            <button type="submit" class="btn btn-primary">上传</button>
+                        </div>
+                    </div>
+                    <p class="pt-2 text-xs text-base-content/60">
+                        支持图片与常见文档，单个文件不超过 10MB。
+                    </p>
+                </form>
+            </div>
+        </div>
+
+        {# ---------- 分类筛选 ---------- #}
+        <div class="tabs tabs-boxed bg-base-200">
+            {% for opt in categories %}
+                <a href="{% if opt.value %}?category={{ opt.value }}{% else %}?{% endif %}"
+                   class="tab {% if active_category == opt.value %}tab-active{% endif %}">{{ opt.label }}</a>
+            {% endfor %}
+        </div>
+
+        {# ---------- 文件列表 ---------- #}
+        <div class="card bordered bg-base-100 shadow-sm">
+            <div class="card-body p-0">
+                <div class="overflow-x-auto">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>文件</th>
+                                <th>分类</th>
+                                <th>大小</th>
+                                {% if user.is_staff %}<th>上传者</th>{% endif %}
+                                <th>上传时间</th>
+                                <th class="text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in page_result.items %}
+                                <tr class="hover">
+                                    <td>
+                                        <div class="flex items-center gap-3">
+                                            {% if entry.is_image %}
+                                                <img src="{{ entry.file.url }}" alt="{{ entry.original_name }}"
+                                                     class="h-10 w-10 rounded object-cover">
+                                            {% else %}
+                                                <span class="badge badge-outline badge-sm">{{ entry.extension|upper }}</span>
+                                            {% endif %}
+                                            <span class="max-w-[16rem] truncate font-medium">{{ entry.original_name }}</span>
+                                        </div>
+                                    </td>
+                                    <td>{{ entry.get_category_display }}</td>
+                                    <td>{{ entry.size|file_size }}</td>
+                                    {% if user.is_staff %}<td>{{ entry.uploader.display_name }}</td>{% endif %}
+                                    <td>{{ entry.uploaded_at|datetime_fmt }}</td>
+                                    <td class="text-right">
+                                        <div class="join">
+                                            <a href="{% url 'files:download' entry.pk %}" class="btn btn-sm btn-ghost">下载</a>
+                                            <form method="post" action="{% url 'files:delete' entry.pk %}" class="join-item">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-ghost text-error"
+                                                        data-confirm="确定删除「{{ entry.original_name }}」？该操作不可恢复。">删除</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="{% if user.is_staff %}6{% else %}5{% endif %}">
+                                        <div class="py-10 text-center text-base-content/50">暂无文件</div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        {% include "includes/pagination.html" %}
+    </div>
+{% endblock %}

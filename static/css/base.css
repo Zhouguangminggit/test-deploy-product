@@ -1,0 +1,44 @@
+/* Tailwind CSS v4 入口文件。
+ * 由 `npm run build` 编译为 static/css/dist/base.css（模板实际引用编译产物）。
+ * 请勿直接引用本文件，修改后需重新构建。
+ *
+ * v4 采用 CSS-first 配置：
+ * - 无需 tailwind.config.js，模板内容自动扫描；
+ * - DaisyUI 以插件方式加载，提供 btn / card / modal / alert / table 等
+ *   语义化组件类与 30+ 内置主题（详见 https://daisyui.com）。
+ */
+
+@import "tailwindcss" source(none);
+
+/* 工具类扫描范围（相对本文件）：新增模板/输出 HTML 的代码目录时需同步补充 */
+@source "../../templates";
+@source "../../apps";
+@source "../../utils";
+@source "../js";
+@plugin "daisyui";
+
+@layer base {
+    /* 裸表单控件兜底样式：Django 默认渲染且未加类的 input/textarea/select */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="search"],
+    input[type="url"],
+    input[type="tel"],
+    textarea,
+    select {
+        @apply mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none;
+    }
+
+    label {
+        @apply text-sm font-medium text-gray-700;
+    }
+}
+
+@layer components {
+    /* 表单字段错误提示（按钮、卡片等组件类统一使用 DaisyUI：btn / card 等） */
+    .form-error {
+        @apply mt-1 text-sm text-red-600;
+    }
+}

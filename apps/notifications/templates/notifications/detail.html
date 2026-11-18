@@ -1,0 +1,42 @@
+{% extends "layouts/frontend.html" %}
+{% load static %}
+
+{% block title %}{{ recipient.message.title }} · 消息详情 · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-3xl space-y-6">
+        <div class="card bordered bg-base-100 shadow-sm">
+            <div class="card-body space-y-4">
+                {# ---------- 标题与元信息 ---------- #}
+                <div class="space-y-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="badge badge-sm {% if recipient.message.level == 'error' %}badge-error{% elif recipient.message.level == 'warning' %}badge-warning{% elif recipient.message.level == 'success' %}badge-success{% else %}badge-info{% endif %}">
+                            {{ recipient.message.get_level_display }}
+                        </span>
+                        <span class="badge badge-outline badge-sm">{{ recipient.message.get_audience_display }}</span>
+                    </div>
+                    <h2 class="card-title text-2xl">{{ recipient.message.title }}</h2>
+                    <p class="text-sm text-base-content/60">
+                        送达时间：{{ recipient.created_at|datetime_fmt }}
+                        {% if recipient.read_at %}· 阅读时间：{{ recipient.read_at|datetime_fmt }}{% endif %}
+                    </p>
+                </div>
+
+                <div class="divider my-0"></div>
+
+                {# ---------- 正文 ---------- #}
+                <div class="whitespace-pre-wrap leading-relaxed">{{ recipient.message.content }}</div>
+
+                {# ---------- 操作 ---------- #}
+                <div class="card-actions justify-start pt-2">
+                    <a href="{% url 'notifications:list' %}" class="btn btn-sm">返回列表</a>
+                    <form method="post" action="{% url 'notifications:delete' recipient.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-error btn-outline"
+                                data-confirm="确定删除消息「{{ recipient.message.title }}」？">删除</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

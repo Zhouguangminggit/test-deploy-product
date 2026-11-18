@@ -1,0 +1,101 @@
+{% extends "layouts/frontend.html" %}
+{% load static %}
+
+{% block title %}消息通知 · {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="space-y-6">
+        {# ---------- 头部：标题 + 未读数 + 全部已读 ---------- #}
+        <div class="card bordered bg-base-100 shadow-sm">
+            <div class="card-body flex-row flex-wrap items-center justify-between gap-4 sm:flex-nowrap">
+                <div>
+                    <h2 class="card-title">消息通知</h2>
+                    <p class="text-sm text-base-content/60">
+                        {% if unread_total %}
+                            你有 <span class="font-semibold text-error">{{ unread_total }}</span> 条未读消息
+                        {% else %}
+                            暂无未读消息
+                        {% endif %}
+                    </p>
+                </div>
+                {% if unread_total %}
+                    <form method="post" action="{% url 'notifications:mark_all_read' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary btn-sm">全部标记已读</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+
+        {# ---------- 状态筛选 ---------- #}
+        <div class="tabs tabs-boxed bg-base-200 w-fit">
+            <a href="{% url 'notifications:list' %}"
+               class="tab {% if state == 'all' %}tab-active{% endif %}">全部</a>
+            <a href="?state=unread"
+               class="tab {% if state == 'unread' %}tab-active{% endif %}">仅未读</a>
+        </div>
+
+        {# ---------- 消息列表 ---------- #}
+        <div class="card bordered bg-base-100 shadow-sm">
+            <div class="card-body p-0">
+                <div class="overflow-x-auto">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>消息</th>
+                                <th>类型</th>
+                                <th>级别</th>
+                                <th>送达时间</th>
+                                <th class="text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in page_result.items %}
+                                <tr class="hover {% if not entry.is_read %}bg-base-200/60{% endif %}">
+                                    <td>
+                                        <div class="flex items-center gap-3">
+                                            {% if not entry.is_read %}
+                                                <span class="badge badge-error badge-xs text-badge-content" aria-label="未读"></span>
+                                            {% else %}
+                                                <span class="badge badge-ghost badge-xs" aria-label="已读"></span>
+                                            {% endif %}
+                                            <a href="{% url 'notifications:detail' entry.pk %}"
+                                               class="max-w-[20rem] truncate {% if not entry.is_read %}font-semibold{% endif %}">
+                                                {{ entry.message.title }}
+                                            </a>
+                                        </div>
+                                    </td>
+                                    <td>{{ entry.message.get_audience_display }}</td>
+                                    <td>
+                                        <span class="badge badge-sm {% if entry.message.level == 'error' %}badge-error{% elif entry.message.level == 'warning' %}badge-warning{% elif entry.message.level == 'success' %}badge-success{% else %}badge-info{% endif %}">
+                                            {{ entry.message.get_level_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ entry.created_at|datetime_fmt }}</td>
+                                    <td class="text-right">
+                                        <div class="join">
+                                            <a href="{% url 'notifications:detail' entry.pk %}" class="btn btn-sm btn-ghost">查看</a>
+                                            <form method="post" action="{% url 'notifications:delete' entry.pk %}" class="join-item">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-ghost text-error"
+                                                        data-confirm="确定删除消息「{{ entry.message.title }}」？">删除</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="5">
+                                        <div class="py-10 text-center text-base-content/50">暂无消息</div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        {% include "includes/pagination.html" %}
+    </div>
+{% endblock %}

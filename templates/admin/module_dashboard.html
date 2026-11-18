@@ -1,0 +1,47 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模块数据概览</title>
+  <link rel="stylesheet" href="{% static 'css/admin-dashboard.css' %}">
+  {% if modules %}
+    <script defer src="{% static 'js/dist/echarts.min.js' %}"></script>
+    <script defer src="{% static 'js/admin-dashboard.js' %}"></script>
+  {% endif %}
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">后台管理</p>
+      <h1>模块数据概览</h1>
+      <p>按后台模块汇总当前账号可见的记录。</p>
+    </header>
+    {% if modules %}
+      <section aria-labelledby="chart-title" class="chart-panel">
+        <h2 id="chart-title">各模块记录数</h2>
+        <div id="module-chart" hidden></div>
+        {{ summary|json_script:"module-counts" }}
+      </section>
+      <section aria-labelledby="details-title">
+        <h2 id="details-title">模型明细</h2>
+        <div class="modules">
+          {% for module in modules %}
+            <section class="module" aria-labelledby="module-{{ forloop.counter }}">
+              <h3 id="module-{{ forloop.counter }}">{{ module.name }}</h3>
+              <ul>
+                {% for model in module.models %}
+                  <li><a href="{{ model.url }}">{{ model.name }}</a><span>{{ model.count }}</span></li>
+                {% endfor %}
+              </ul>
+            </section>
+          {% endfor %}
+        </div>
+      </section>
+    {% else %}
+      <p class="empty">当前账号暂无可查看的模块统计。</p>
+    {% endif %}
+  </main>
+</body>
+</html>

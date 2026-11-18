@@ -1,0 +1,7 @@
+/* 前台补充样式（非 Tailwind 编译，直接引用）。
+ * 用于放置前台页面特有的、不便用工具类表达的样式。按需扩展。
+ */
+
+.front-hero {
+    background-image: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+}

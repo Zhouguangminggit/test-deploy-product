@@ -1,0 +1,18 @@
+{# 通用确认弹窗：由 static/js/common.js 暴露的 window.confirmDialog() 驱动 #}
+{# 根节点保持 hidden/flex 切换约定（common.js），内部使用 DaisyUI modal-box / btn #}
+<div id="confirm-modal" data-confirm-modal
+     class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 px-4">
+    <div class="modal-box w-full max-w-sm shadow-xl" role="dialog" aria-modal="true">
+        <h3 class="text-lg font-semibold text-gray-900" data-confirm-title>确认操作</h3>
+        <p class="mt-2 text-sm text-gray-600" data-confirm-message>确定要执行该操作吗？</p>
+
+        <div class="modal-action">
+            <button type="button" data-confirm-cancel class="btn btn-outline btn-sm">
+                取消
+            </button>
+            <button type="button" data-confirm-ok class="btn btn-primary btn-sm">
+                确定
+            </button>
+        </div>
+    </div>
+</div>

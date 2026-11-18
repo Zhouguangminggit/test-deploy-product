@@ -1,0 +1,5 @@
+{% if SITE_LOGO %}
+    <img src="{{ SITE_LOGO }}" alt="" style="object-fit: contain">
+{% else %}
+    <span aria-hidden="true" style="display: inline-grid; place-items: center; width: 2rem; height: 2rem; margin: 0 .5rem; border: 1px solid currentColor; border-radius: .5rem; font-weight: bold">{{ SITE_NAME|slice:":1"|upper }}</span>
+{% endif %}

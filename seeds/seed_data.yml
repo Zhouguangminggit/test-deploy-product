@@ -1,0 +1,11 @@
+# 本地 make seed-data 与线上 seedkit_run 共用此配置。
+# 配置 PIXABAY_API_KEY 后，图片可按模型字段或关联字段的关键词检索。
+# 分类、商品和内容图示例见 docs/project/seed-data-guide.md。
+#
+# modules:
+#   catalog: { file: catalog.yml }
+#   products: { file: products.yml }
+#
+# 新项目使用版本 2，模型声明 match_by，以数据库唯一业务键补齐缺失行。
+version: 2
+modules: {}

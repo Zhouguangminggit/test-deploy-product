@@ -1,0 +1,17 @@
+{# 全局消息提示：读取 Django messages 框架，使用 DaisyUI alert 组件 #}
+{% if messages %}
+    <div class="space-y-2 py-3">
+        {% for message in messages %}
+            <div data-message data-autohide="5000"
+                 class="alert text-sm
+                        {% if message.tags == 'error' %}alert-error
+                        {% elif message.tags == 'success' %}alert-success
+                        {% elif message.tags == 'warning' %}alert-warning
+                        {% else %}alert-info{% endif %}">
+                <span>{{ message }}</span>
+                <button type="button" data-dismiss
+                        class="btn btn-ghost btn-xs ml-auto" aria-label="关闭">&times;</button>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}

@@ -1,0 +1,83 @@
+{% load static %}
+{# 前台顶部导航栏：左上角 logo + 站点标题，中间模块导航，右上角登录态 #}
+<header class="navbar bg-base-100 shadow-sm">
+    <div class="mx-auto flex w-full max-w-6xl items-center gap-2 px-4">
+        {# ---------- 左：logo + 标题 ---------- #}
+        <div class="flex-1 items-center gap-2">
+            <a href="{% url 'home' %}" class="flex items-center gap-2">
+                {% include "includes/brand_mark.html" %}
+                <span class="text-lg font-bold">{{ SITE_NAME }}</span>
+            </a>
+        </div>
+
+        {# ---------- 中：模块导航（后台管理入口仅管理员在右上角下拉框内可见） ---------- #}
+        <nav class="hidden items-center gap-1 md:flex">
+            <a href="{% url 'home' %}" class="btn btn-ghost btn-sm {% if request.path == '/' %}btn-active{% endif %}">首页</a>
+            {% if user.is_authenticated %}
+                <a href="{% url 'files:list' %}" class="btn btn-ghost btn-sm {% if request.path == '/files/' %}btn-active{% endif %}">文件管理</a>
+            {% endif %}
+        </nav>
+
+        {# ---------- 右：登录态 ---------- #}
+        <div class="flex flex-1 items-center justify-end gap-2">
+            {% if user.is_authenticated %}
+                <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-2 normal-case">
+                        <div class="avatar">
+                            <div class="w-8 rounded-full">
+                                {% if user.avatar %}
+                                    <img src="{{ user.avatar.url }}" alt="{{ user.display_name }}">
+                                {% else %}
+                                    <div class="bg-neutral text-neutral-content flex h-full w-full items-center justify-center rounded-full">
+                                        <span class="text-sm font-bold">{{ user.display_name|slice:":1"|upper }}</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <span class="hidden max-w-[8rem] truncate sm:inline">{{ user.display_name }}</span>
+                        <span class="text-xs opacity-60">▾</span>
+                    </div>
+                    <ul tabindex="0" class="dropdown-content menu z-[1] mt-2 w-52 rounded-box bg-base-100 p-2 shadow">
+                        <li><a href="{% url 'accounts:profile' %}">个人中心</a></li>
+                        <li>
+                            <a href="{% url 'notifications:list' %}">
+                                消息通知
+                                {% if UNREAD_MESSAGE_COUNT %}
+                                    <span class="badge badge-error badge-sm text-badge-content">{{ UNREAD_MESSAGE_COUNT }}</span>
+                                {% endif %}
+                            </a>
+                        </li>
+                        {% if user.is_staff %}
+                            <li class="menu-title"><span>管理</span></li>
+                            <li><a href="{% url 'admin:index' %}">后台管理</a></li>
+                        {% endif %}
+                        <li class="menu-title"><span>账户</span></li>
+                        <li>
+                            <form method="post" action="{% url 'accounts:logout' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="text-error">退出登录</button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            {% else %}
+                <a href="{% url 'accounts:login' %}" class="btn btn-ghost btn-sm">登录</a>
+                <a href="{% url 'accounts:register' %}" class="btn btn-primary btn-sm">注册</a>
+            {% endif %}
+
+            {# 移动端菜单 #}
+            <div class="dropdown dropdown-end md:hidden">
+                <div tabindex="0" role="button" class="btn btn-ghost btn-sm">☰</div>
+                <ul tabindex="0" class="dropdown-content menu z-[1] mt-2 w-44 rounded-box bg-base-100 p-2 shadow">
+                    <li><a href="{% url 'home' %}">首页</a></li>
+                    {% if user.is_authenticated %}
+                        <li><a href="{% url 'files:list' %}">文件管理</a></li>
+                    {% endif %}
+                    {% if user.is_staff %}
+                        <li><a href="{% url 'admin:index' %}">后台管理</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</header>
