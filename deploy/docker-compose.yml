@@ -1,31 +1,19 @@
-# 生产部署编排（不含数据库与 Nginx）。
-# - 数据库使用阿里云 RDS 等第三方 MySQL；中间件 Redis 使用阿里云托管实例，
-#   经镜像内 .env 的 REDIS_URL 注入，编排内仅 web / worker / beat 三个应用进程；
-# - 静态文件由 WhiteNoise 直接随应用提供（collectstatic 产物），媒体文件由应用返回；
-# - 镜像由 CI 构建并推送至阿里云 ACR，服务器只拉取启动，不做本地构建；
-# - 运行时配置来自镜像内的 /app/.env（构建时由 .env.example 自动复制）；
-#   与服务器相关的 ALLOWED_HOSTS / APP_PORT 由 CI 在宿主机环境导出后注入；
-# - 数据库迁移仅由 web 入口脚本执行，worker/beat 覆盖 entrypoint 不跑迁移，避免并发冲突。
-#
-# 服务器目录约定（DEPLOY_PATH）：
-#   deploy/docker-compose.yml     # 由流水线自动更新
-#   deploy/.env                   # 由流水线自动生成（APP_IMAGE / APP_PORT / ALLOWED_HOSTS / PIXABAY_API_KEY / SITE_LOGO），
-#                                 #   compose 自动读取，因此中台系统/人工 SSH 无需 export 任何变量
-#
-# 手动操作（首次需先 docker login <ACR地址>，私有仓库拉取凭证按用户持久化）：
-#   docker compose -f deploy/docker-compose.yml pull
-#   docker compose -f deploy/docker-compose.yml up -d
+# 生产部署入口：在 DEPLOY_PATH 下执行 docker compose --env-file deploy/.env -f deploy/docker-compose.yml。
+# CI 为每个部署目录固定项目名，并在 deploy/.env 中记录镜像和端口。
+# .env.runtime 可覆盖镜像内的 Django 环境默认值，与 Compose 插值配置分开管理。
+name: ${APP_COMPOSE_PROJECT:?set APP_COMPOSE_PROJECT for this deployment}
 
 services:
   web:
-    # 优先取 deploy/.env（流水线生成）中的本次镜像地址；未提供时回退占位地址，
-    # 占位地址不可拉取，仅用于变量未设置时快速暴露配置缺失
-    image: ${APP_IMAGE:-registry.cn-hangzhou.aliyuncs.com/your-namespace/django-scaffold:latest}
-    pull_policy: always
+    image: ${APP_IMAGE:?set APP_IMAGE for this deployment}
     restart: unless-stopped
+    env_file:
+      - path: .env.runtime
+        required: false
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
-      # 数据库等配置由镜像内 .env 提供；使用外部 RDS，跳过入口脚本的数据库等待
+      CELERY_REDIS_KEY_PREFIX: "${APP_COMPOSE_PROJECT}:"
+      # 数据库等配置可由服务器 .env.runtime 提供；使用外部 RDS，跳过入口脚本的数据库等待
       SKIP_DB_WAIT: "1"
       # 浏览器访问用的域名/IP，由 CI 导出；本机地址供部署时探测使用
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
@@ -39,16 +27,19 @@ services:
     volumes:
       - media_files:/app/media
 
-  # Celery worker：消费 Redis 队列执行异步任务（与 web 共用镜像与 .env 配置）
+  # Celery worker：消费 Redis 队列执行异步任务（与 web 共用镜像与运行配置）
   worker:
-    image: ${APP_IMAGE:-registry.cn-hangzhou.aliyuncs.com/your-namespace/django-scaffold:latest}
-    pull_policy: always
+    image: ${APP_IMAGE:?set APP_IMAGE for this deployment}
     restart: unless-stopped
+    env_file:
+      - path: .env.runtime
+        required: false
     # 覆盖镜像入口（entrypoint.sh 会跑迁移+Gunicorn），直接起 worker
     entrypoint: []
     command: celery -A config worker -l INFO -c ${CELERY_CONCURRENCY:-2}
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
+      CELERY_REDIS_KEY_PREFIX: "${APP_COMPOSE_PROJECT}:"
       SKIP_DB_WAIT: "1"
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       # seedkit 图片下载实际在 worker 执行，必须注入密钥
@@ -57,21 +48,26 @@ services:
       - media_files:/app/media
     # web 先完成 migrate，worker/beat 再启动
     depends_on:
-      - web
+      web:
+        condition: service_healthy
 
   # Celery beat：周期任务调度器，从数据库（django-celery-beat）读取 Admin 配置的计划
   beat:
-    image: ${APP_IMAGE:-registry.cn-hangzhou.aliyuncs.com/your-namespace/django-scaffold:latest}
-    pull_policy: always
+    image: ${APP_IMAGE:?set APP_IMAGE for this deployment}
     restart: unless-stopped
+    env_file:
+      - path: .env.runtime
+        required: false
     entrypoint: []
     command: celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
+      CELERY_REDIS_KEY_PREFIX: "${APP_COMPOSE_PROJECT}:"
       SKIP_DB_WAIT: "1"
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
     depends_on:
-      - web
+      web:
+        condition: service_healthy
 
 volumes:
   media_files:

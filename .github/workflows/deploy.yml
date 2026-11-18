@@ -25,10 +25,10 @@ on:
       ACR_REPOSITORY:  { description: "镜像仓库名，默认 django-scaffold", required: false }
       ACR_USERNAME:    { description: "ACR 账号（敏感）", required: false }
       ACR_PASSWORD:    { description: "ACR 密码（敏感）", required: false }
-      COMPOSE_SERVICE: { description: "compose 服务名，默认 web", required: false }
+      COMPOSE_SERVICE: { description: "compose 服务名，兼容旧中台字段，部署固定更新全栈", required: false }
       DEPLOY_BRANCH:   { description: "部署分支，默认触发 ref", required: false }
       PIXABAY_API_KEY: { description: "Pixabay API 密钥（敏感，seedkit 图片下载）", required: false }
-      SITE_LOGO:       { description: "导航栏logo公网URL（中台自动注入）", required: false }  
+      SITE_LOGO:       { description: "导航栏logo公网URL（中台自动注入）", required: false }
 
 
 concurrency:
@@ -39,22 +39,27 @@ jobs:
   build-push:
     name: 构建镜像并推送至 ACR
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      commit: ${{ steps.image.outputs.commit }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
 
-      - name: Resolve variables (inputs 优先，Secrets 兜底)
+      - name: Resolve image
+        id: image
+        env:
+          REGISTRY: ${{ inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
+          NAMESPACE: ${{ inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
+          IMAGE_NAME: ${{ inputs.ACR_REPOSITORY || secrets.ACR_REPOSITORY || 'django-scaffold' }}
+          ACR_PASSWORD: ${{ inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
         run: |
           set -eu
-          # 敏感值走 inputs 时登记运行时掩码，防止日志与后续变量泄漏
-          for v in "${{ github.event.inputs.SSH_KEY }}" "${{ github.event.inputs.SSH_PASSPHRASE }}" "${{ github.event.inputs.ACR_PASSWORD }}" "${{ github.event.inputs.PIXABAY_API_KEY }}"; do
-            if [ -n "$v" ]; then echo "::add-mask::$v"; fi
-          done
-          IMAGE_NAME="${{ github.event.inputs.ACR_REPOSITORY || secrets.ACR_REPOSITORY }}"
-          [ -n "${IMAGE_NAME}" ] || IMAGE_NAME=django-scaffold
-          echo "IMAGE_NAME=${IMAGE_NAME}" >> "$GITHUB_ENV"
+          if [ -n "$ACR_PASSWORD" ]; then echo "::add-mask::$ACR_PASSWORD"; fi
+          echo "repository=$REGISTRY/$NAMESPACE/$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -71,6 +76,7 @@ jobs:
           password: ${{ env.PASSWORD }}
 
       - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -78,8 +84,8 @@ jobs:
           file: deploy/Dockerfile
           push: true
           tags: |
-            ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}/${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ github.event.inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}/${{ github.event.inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+            ${{ steps.image.outputs.repository }}:${{ steps.image.outputs.commit }}
+            ${{ steps.image.outputs.repository }}:latest
           # 构建缓存放在 GitHub Actions 缓存中：阿里云 ACR 不支持 BuildKit 的
           # registry 缓存清单（application/vnd.buildkit.cacheconfig.v0 会被拒绝）
           cache-from: type=gha
@@ -94,139 +100,85 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.DEPLOY_BRANCH || github.ref_name }}
+          ref: ${{ needs.build-push.outputs.commit }}
 
-      # job 级 env 不能引用 github 上下文，这里把非敏感变量统一解析进 GITHUB_ENV 供全 job 复用；
-      # 私钥/口令本体仍走后续 step 级 env，不落 GITHUB_ENV
-      - name: Resolve variables (inputs 优先，Secrets 兜底)
-        run: |
-          set -eu
-          # 敏感值走 inputs 时在本 job 登记运行时掩码（deploy job 与 build-push 独立生效）
-          for v in "${{ github.event.inputs.PIXABAY_API_KEY }}"; do
-            if [ -n "$v" ]; then echo "::add-mask::$v"; fi
-          done
-          first_non_empty() {
-            local v
-            for v in "$@"; do
-              if [ -n "$v" ]; then printf '%s' "$v"; return; fi
-            done
-          }
-          {
-            echo "SSH_HOST=$(first_non_empty "${{ github.event.inputs.SSH_HOST }}" "${{ secrets.SSH_HOST }}")"
-            echo "SSH_USER=$(first_non_empty "${{ github.event.inputs.SSH_USER }}" "${{ secrets.SSH_USER }}")"
-            echo "SSH_PORT=$(first_non_empty "${{ github.event.inputs.SSH_PORT }}" "${{ secrets.SSH_PORT }}" 22)"
-            echo "DEPLOY_PATH=$(first_non_empty "${{ github.event.inputs.DEPLOY_PATH }}" "${{ secrets.DEPLOY_PATH }}")"
-            echo "APP_PORT=$(first_non_empty "${{ github.event.inputs.APP_PORT }}" "${{ secrets.APP_PORT }}" 8000)"
-            echo "IMAGE_NAME=$(first_non_empty "${{ github.event.inputs.ACR_REPOSITORY }}" "${{ secrets.ACR_REPOSITORY }}" django-scaffold)"
-            echo "ACR_REGISTRY=$(first_non_empty "${{ github.event.inputs.ACR_REGISTRY }}" "${{ secrets.ACR_REGISTRY }}")"
-            echo "ACR_NAMESPACE=$(first_non_empty "${{ github.event.inputs.ACR_NAMESPACE }}" "${{ secrets.ACR_NAMESPACE }}")"
-            echo "COMPOSE_SERVICE=$(first_non_empty "${{ github.event.inputs.COMPOSE_SERVICE }}" "${{ secrets.COMPOSE_SERVICE }}" web)"
-          } >> "$GITHUB_ENV"
-          # APP_HOST 未配置时回退 SSH_HOST（与原流水线约定一致）
-          RUN_HOST=$(first_non_empty "${{ github.event.inputs.APP_HOST }}" "${{ secrets.APP_HOST }}")
-          if [ -z "${RUN_HOST}" ]; then RUN_HOST="${SSH_HOST}"; fi
-          echo "APP_HOST=${RUN_HOST}" >> "$GITHUB_ENV"
-
-      # 直接用 runner 自带 OpenSSH（与本地 ssh 行为一致），避免第三方容器的兼容性问题
-      - name: Upload docker-compose.yml
+      - name: Upload and deploy
         env:
-          SSH_KEY: ${{ github.event.inputs.SSH_KEY || secrets.SSH_KEY }}
-          SSH_PASSPHRASE: ${{ github.event.inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
+          SSH_HOST: ${{ inputs.SSH_HOST || secrets.SSH_HOST }}
+          SSH_USER: ${{ inputs.SSH_USER || secrets.SSH_USER }}
+          SSH_PORT: ${{ inputs.SSH_PORT || secrets.SSH_PORT || '22' }}
+          SSH_KEY: ${{ inputs.SSH_KEY || secrets.SSH_KEY }}
+          SSH_PASSPHRASE: ${{ inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
+          DEPLOY_PATH: ${{ inputs.DEPLOY_PATH || secrets.DEPLOY_PATH }}
+          APP_PORT: ${{ inputs.APP_PORT || secrets.APP_PORT || '8000' }}
+          APP_HOST: ${{ inputs.APP_HOST || secrets.APP_HOST }}
+          ACR_REGISTRY: ${{ inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
+          IMAGE_NAME: ${{ inputs.ACR_REPOSITORY || secrets.ACR_REPOSITORY || 'django-scaffold' }}
+          IMAGE_DIGEST: ${{ needs.build-push.outputs.digest }}
+          ACR_USERNAME: ${{ inputs.ACR_USERNAME || secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
+          PIXABAY_API_KEY: ${{ inputs.PIXABAY_API_KEY || secrets.PIXABAY_API_KEY }}
+          SITE_LOGO: ${{ inputs.SITE_LOGO || secrets.SITE_LOGO }}
+        shell: bash
         run: |
-          set -eu
+          set -euo pipefail
+          for value in "$ACR_PASSWORD" "$PIXABAY_API_KEY" "$SSH_PASSPHRASE"; do
+            if [[ -n "$value" ]]; then echo "::add-mask::$value"; fi
+          done
 
-          # 清理 Secret/inputs 中可能混入的空格/换行，并兼容误填成 user@host 的写法
-          SSH_USER=$(printf '%s' "${SSH_USER}" | tr -d '[:space:]')
-          SSH_HOST=$(printf '%s' "${SSH_HOST}" | tr -d '[:space:]')
-          SSH_PORT=$(printf '%s' "${SSH_PORT}" | tr -d '[:space:]')
-          DEPLOY_PATH=$(printf '%s' "${DEPLOY_PATH}" | sed 's/[[:space:]]*$//')
+          SSH_USER=$(printf '%s' "$SSH_USER" | tr -d '[:space:]')
+          SSH_HOST=$(printf '%s' "$SSH_HOST" | tr -d '[:space:]')
+          SSH_PORT=$(printf '%s' "$SSH_PORT" | tr -d '[:space:]')
+          DEPLOY_PATH=$(printf '%s' "$DEPLOY_PATH" | sed 's/[[:space:]]*$//')
           SSH_USER="${SSH_USER%%@*}"
           SSH_HOST="${SSH_HOST##*@}"
-          [ -n "${SSH_PORT}" ] || SSH_PORT=22
+          [[ "$SSH_USER" =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*$ ]]
+          [[ "$SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          [[ "$DEPLOY_PATH" = /* ]] || { echo "::error::DEPLOY_PATH 必须是绝对路径"; exit 1; }
+          [[ -n "$SSH_KEY" ]] || { echo "::error::缺少 SSH_KEY"; exit 1; }
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
 
-          case "${SSH_USER}" in
-            ""|*[!A-Za-z0-9._-]*) echo "::error::SSH_USER 为空或含非法字符，应只填写登录用户名（如 root）"; exit 1 ;;
-          esac
-          case "${SSH_HOST}" in
-            ""|*[!A-Za-z0-9.-]*) echo "::error::SSH_HOST 为空或含非法字符，应只填写域名/IP（不要带 user@ 或端口）"; exit 1 ;;
-          esac
-          case "${SSH_PORT}" in
-            *[!0-9]*) echo "::error::SSH_PORT 只能是数字"; exit 1 ;;
-          esac
-          [ -n "${DEPLOY_PATH}" ] || { echo "::error::DEPLOY_PATH 为空"; exit 1; }
-          [ -n "${SSH_KEY}" ] || { echo "::error::SSH_KEY 为空，请确认私钥已配置（仓库 Secrets 或中台全局变量）"; exit 1; }
-
-          mkdir -p ~/.ssh
-          printf '%s\n' "${SSH_KEY}" | tr -d '\r' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          if [ -n "${SSH_PASSPHRASE}" ]; then
-            ssh-keygen -p -P "${SSH_PASSPHRASE}" -N "" -f ~/.ssh/deploy_key >/dev/null
+          umask 077
+          local_stage=$(mktemp -d)
+          trap 'rm -rf -- "$local_stage"' EXIT
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$local_stage/key"
+          if [[ -n "$SSH_PASSPHRASE" ]]; then
+            ssh-keygen -p -P "$SSH_PASSPHRASE" -N "" -f "$local_stage/key" >/dev/null
           fi
 
-          echo "本次部署使用的公钥指纹（应与服务器 authorized_keys 中一致）："
-          ssh-keygen -y -f ~/.ssh/deploy_key > /tmp/deploy_key.pub
-          ssh-keygen -lf /tmp/deploy_key.pub
+          export APP_IMAGE="$ACR_REGISTRY/$ACR_NAMESPACE/$IMAGE_NAME@$IMAGE_DIGEST"
+          export ALLOWED_HOSTS="${APP_HOST:-$SSH_HOST},localhost,127.0.0.1"
+          python3 - "$local_stage/compose.env" <<'PY'
+          import os
+          import sys
 
-          # 用 -o Port= 同时兼容 ssh 与 scp（scp 的 -P 与 ssh 的 -p 含义不同）
-          SSH_OPTS="-i $HOME/.ssh/deploy_key -o Port=${SSH_PORT} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
-          if ! ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" 'echo "连接成功：$(whoami)@$(hostname)"'; then
-            echo "::error::SSH 连接失败：请确认用户 ${SSH_USER} 的 ~/.ssh/authorized_keys 中包含上面指纹对应的公钥"
-            exit 1
-          fi
+          with open(sys.argv[1], "w", encoding="utf-8") as stream:
+              stream.write(f"DEPLOY_REPOSITORY={os.environ['GITHUB_REPOSITORY']}\n")
+              stream.write(f"APP_PORT={int(os.environ['APP_PORT'])}\n")
+              for key in ("APP_IMAGE", "ALLOWED_HOSTS", "PIXABAY_API_KEY", "SITE_LOGO"):
+                  value = os.environ[key]
+                  if "\n" in value or "\r" in value:
+                      raise SystemExit(f"{key} 必须为单行值")
+                  escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "$$")
+                  stream.write(f'{key}="{escaped}"\n')
+          PY
 
-          ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" "mkdir -p '${DEPLOY_PATH}/deploy'"
-          scp $SSH_OPTS deploy/docker-compose.yml "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/deploy/docker-compose.yml"
+          # SSH 远端使用 POSIX shell。对路径与登录参数按单引号规则转义。
+          quote() {
+            printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+          }
+          options=(-i "$local_stage/key" -o "Port=$SSH_PORT" -o IdentitiesOnly=yes
+                   -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes)
+          target="$SSH_USER@$SSH_HOST"
+          remote_path=$(quote "$DEPLOY_PATH")
+          remote_stage=$(ssh "${options[@]}" "$target" \
+            "umask 077 && mkdir -p $remote_path/deploy && mktemp -d /tmp/scaffold-deploy.XXXXXXXX")
+          [[ "$remote_stage" =~ ^/tmp/scaffold-deploy\.[a-zA-Z0-9]+$ ]]
+          trap 'ssh "${options[@]}" "$target" "rm -rf -- $remote_stage"; rm -rf -- "$local_stage"' EXIT
 
-      # 远端脚本中的 ${{ ... }} 全部由 runner 侧展开为字面量后再下发（与原流水线一致），
-      # 不依赖 appleboy envs 转发，规避 drone-ssh 未导出变量导致的 unbound variable
-      - name: Pull, restart and health check
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ env.SSH_HOST }}
-          username: ${{ env.SSH_USER }}
-          key: ${{ github.event.inputs.SSH_KEY || secrets.SSH_KEY }}
-          passphrase: ${{ github.event.inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
-          port: ${{ env.SSH_PORT }}
-          script: |
-            set -eu
-
-            cd "${{ env.DEPLOY_PATH }}"
-
-            # ACR 账号密码等 Secrets/inputs 只在 runner 侧展开，SSH 远端脚本无法引用，
-            # 因此这里先在 runner 上拼好镜像地址、端口和域名，再写入服务器
-            # deploy/.env，供服务器侧（含中台系统/人工 SSH）执行 compose 时自动读取
-            REPO="${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}"
-            ALLOWED="${{ env.APP_HOST }},localhost,127.0.0.1"
-            COMPOSE="docker compose -f deploy/docker-compose.yml"
-
-            echo "==> 登录 ACR"
-            echo "${{ github.event.inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}" | docker login "${{ env.ACR_REGISTRY }}" \
-              -u "${{ github.event.inputs.ACR_USERNAME || secrets.ACR_USERNAME }}" --password-stdin
-
-            # 落地 compose 环境变量文件：APP_IMAGE 固定 :latest（CI 每次部署都会
-            # 推送最新 sha 镜像到 :latest），中台仅执行 up -d 也能拉到最新版本；
-            # 本次部署仍显式使用 sha tag，保证与流水线产物严格对应
-            # 用 printf 而非 heredoc，避免 YAML 块缩进被写进 .env 行首
-            printf 'APP_IMAGE=%s\nAPP_PORT=%s\nALLOWED_HOSTS=%s\nPIXABAY_API_KEY=%s\nSITE_LOGO=%s\n' \
-              "${REPO}:latest" "${{ env.APP_PORT }}" "${ALLOWED}" "${{ github.event.inputs.PIXABAY_API_KEY || secrets.PIXABAY_API_KEY }}" "${{ github.event.inputs.SITE_LOGO || secrets.SITE_LOGO }}" > deploy/.env
-
-            echo "==> 拉取镜像 ${REPO}:${{ github.sha }}"
-            APP_IMAGE="${REPO}:${{ github.sha }}" ALLOWED_HOSTS="${ALLOWED}" $COMPOSE pull "${{ env.COMPOSE_SERVICE }}"
-
-            echo "==> 重启服务"
-            APP_IMAGE="${REPO}:${{ github.sha }}" ALLOWED_HOSTS="${ALLOWED}" \
-              $COMPOSE up -d --remove-orphans
-
-            echo "==> 等待健康检查通过"
-            for i in $(seq 1 30); do
-              if $COMPOSE exec -T web python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=3)"; then
-                echo "部署成功"
-                exit 0
-              fi
-              echo "第 ${i} 次检查未通过"
-              sleep 5
-            done
-
-            $COMPOSE logs --tail=100 "${{ env.COMPOSE_SERVICE }}"
-            echo "健康检查超时"
-            exit 1
+          scp "${options[@]}" deploy/docker-compose.yml deploy/apply.sh "$local_stage/compose.env" "$target:$remote_stage/"
+          printf '%s\n' "$ACR_PASSWORD" | ssh "${options[@]}" "$target" \
+            "docker login $(quote "$ACR_REGISTRY") -u $(quote "$ACR_USERNAME") --password-stdin"
+          ssh "${options[@]}" "$target" "sh $remote_stage/apply.sh $remote_stage $remote_path"

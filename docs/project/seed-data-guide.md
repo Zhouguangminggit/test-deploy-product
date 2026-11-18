@@ -82,14 +82,22 @@ models:
 # 本地，完成迁移后运行
 make seed-data
 uv run python manage.py seedkit_run --module products --sync
-
-# 线上，应用发布并完成迁移后同步执行
-docker compose -f deploy/docker-compose.yml exec -T web python manage.py seedkit_run --sync
-
-# 中台使用 Celery 异步执行，读取 stdout JSON 中的 run_id
-docker compose -f deploy/docker-compose.yml exec -T web python manage.py seedkit_run
-docker compose -f deploy/docker-compose.yml exec -T web python manage.py seedkit_status --run-id <id>
 ```
+
+线上应用完成部署和迁移后，使用[中台远程命令前置代码](../deployment/production-deployment.md#五中台触发部署及远程命令)定位目标应用。在同一次 SSH 调用中定义 `compose` 后执行对应命令。
+
+```bash
+# 中台异步投递
+compose exec -T web python manage.py seedkit_run --trigger platform
+
+# 使用投递返回的 run_id 查询同一应用内的运行记录
+compose exec -T web python manage.py seedkit_status --run-id "$RUN_ID"
+
+# 需要同步执行时使用
+compose exec -T web python manage.py seedkit_run --sync
+```
+
+中台先检查投递命令退出码，再从 stdout 的单行 JSON 取 `run_id`。查询返回 `pending` 或 `running` 时继续轮询，返回 `success`、`partial` 或 `failed` 时结束，并展示 `error` 与 `logs`。
 
 `--module` 可重复传入。`seedkit_status` 支持 `--tail` 控制日志条数。后台「数据初始化」也可查看运行记录。基座的 `modules` 默认为空，业务项目按需声明自己的模型与素材。
 

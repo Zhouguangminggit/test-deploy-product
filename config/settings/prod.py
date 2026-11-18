@@ -64,6 +64,9 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 # 形如 redis://:密码@实例地址:6379/0（见 .env.example 说明）。
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CELERY_BROKER_URL = REDIS_URL
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "global_keyprefix": env("CELERY_REDIS_KEY_PREFIX", default=""),
+}
 
 # ----------------------------- 日志（Loguru）-----------------------------
 # 生产默认 INFO 级别、仅输出到控制台（stderr），交由 Docker / 日志采集系统统一收集；

@@ -12,7 +12,9 @@ CSS_WATCH := dev
 endif
 PYTHON := $(UV) run python
 MANAGE := $(PYTHON) manage.py
-COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
+# 本地项目名按根目录生成，每个检出目录独立，端口变更时仍使用同一组容器。
+LOCAL_COMPOSE_PROJECT = $(shell $(PYTHON) -c "import hashlib; from pathlib import Path; print('local-' + hashlib.sha256(str(Path.cwd().resolve()).encode()).hexdigest()[:20])")
+COMPOSE = APP_IMAGE=$(APP_IMAGE) APP_COMPOSE_PROJECT=$(LOCAL_COMPOSE_PROJECT) docker compose -p $(LOCAL_COMPOSE_PROJECT) --env-file .env -f deploy/docker-compose.yml
 APP_IMAGE ?= django-scaffold:local
 # Celery 进程默认用 dev 配置（与 manage.py runserver 同源，读 .env 的 REDIS_URL）
 DJANGO_SETTINGS_MODULE ?= config.settings.dev
@@ -104,7 +106,7 @@ docker-build: ## 构建本地镜像（默认 tag 为 django-scaffold:local）
 	docker build -f deploy/Dockerfile -t $(APP_IMAGE) .
 
 docker-up: ## 启动容器编排（默认本地镜像，可用 APP_IMAGE=xxx make docker-up 指定）
-	APP_IMAGE=$(APP_IMAGE) $(COMPOSE) up -d
+	$(COMPOSE) up -d
 
 docker-down: ## 停止并移除容器编排
 	$(COMPOSE) down
