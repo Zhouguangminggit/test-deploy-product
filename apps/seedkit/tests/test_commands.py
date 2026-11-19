@@ -169,3 +169,33 @@ def test_seedkit_status_no_runs_raises():
     """无任何运行记录时缺省查询 → CommandError。"""
     with pytest.raises(CommandError):
         call_command("seedkit_status", stdout=StringIO())
+
+
+@pytest.mark.django_db
+def test_seedkit_job_create_execute_and_preserve_terminal_result(yaml_config, seedkit_tables):
+    yaml_config(_marketplace_yaml())
+    out = StringIO()
+    call_command("seedkit_job", "create", stdout=out)
+    run_id = out.getvalue().strip()
+    assert SeedRun.objects.get(pk=run_id).status == SeedRunStatus.PENDING
+
+    call_command("seedkit_job", "execute", run_id)
+    call_command("seedkit_job", "fail", run_id, "容器退出")
+    run = SeedRun.objects.get(pk=run_id)
+    assert run.status == SeedRunStatus.SUCCESS
+    assert run.created_count == 4
+    assert not run.error_message
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [SeedRunStatus.PENDING, SeedRunStatus.RUNNING])
+def test_seedkit_job_records_interruption_once(status):
+    run = SeedRun.objects.create(status=status)
+    call_command("seedkit_job", "fail", str(run.pk), "初始化容器超出内存上限")
+    call_command("seedkit_job", "fail", str(run.pk), "重复收尾")
+    run.refresh_from_db()
+
+    assert run.status == SeedRunStatus.FAILED
+    assert run.finished_at is not None
+    assert run.error_message == "初始化容器超出内存上限"
+    assert list(run.logs.values_list("message", flat=True)) == [run.error_message]

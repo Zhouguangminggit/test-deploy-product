@@ -7,6 +7,7 @@ services:
   web:
     image: ${APP_IMAGE:?set APP_IMAGE for this deployment}
     restart: unless-stopped
+    mem_limit: ${WEB_MEMORY_LIMIT:-224m}
     env_file:
       - path: .env.runtime
         required: false
@@ -45,8 +46,10 @@ services:
 
   # Celery worker：消费 Redis 队列执行异步任务（与 web 共用镜像与运行配置）
   worker:
+    profiles: [worker]
     image: ${APP_IMAGE:?set APP_IMAGE for this deployment}
     restart: unless-stopped
+    mem_limit: ${WORKER_MEMORY_LIMIT:-256m}
     env_file:
       - path: .env.runtime
         required: false
@@ -55,7 +58,7 @@ services:
         format: raw
     # 覆盖镜像入口（entrypoint.sh 会跑迁移+Gunicorn），直接起 worker
     entrypoint: []
-    command: celery -A config worker -l INFO -c ${CELERY_CONCURRENCY:-2}
+    command: celery -A config worker -l INFO --pool prefork -c ${CELERY_CONCURRENCY:-1}
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
       CELERY_REDIS_KEY_PREFIX: "${APP_COMPOSE_PROJECT}:"
@@ -71,8 +74,10 @@ services:
 
   # Celery beat：周期任务调度器，从数据库（django-celery-beat）读取 Admin 配置的计划
   beat:
+    profiles: [scheduled]
     image: ${APP_IMAGE:?set APP_IMAGE for this deployment}
     restart: unless-stopped
+    mem_limit: ${BEAT_MEMORY_LIMIT:-128m}
     env_file:
       - path: .env.runtime
         required: false
@@ -88,6 +93,24 @@ services:
     depends_on:
       web:
         condition: service_healthy
+
+  seedkit:
+    profiles: [seedkit]
+    image: ${APP_IMAGE:?set APP_IMAGE for this deployment}
+    restart: "no"
+    mem_limit: ${SEEDKIT_MEMORY_LIMIT:-192m}
+    env_file:
+      - path: .env.runtime
+        required: false
+      - path: ${APP_MANAGED_ENV_FILE:-.env.runtime.managed}
+        required: false
+        format: raw
+    entrypoint: []
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+    volumes:
+      - media_files:/app/media
 
 volumes:
   media_files:

@@ -23,7 +23,7 @@ on:
       ACR_REPOSITORY:  { description: "镜像仓库名，默认 django-scaffold", required: false }
       ACR_USERNAME:    { description: "ACR 账号（敏感）", required: false }
       ACR_PASSWORD:    { description: "ACR 密码（敏感）", required: false }
-      COMPOSE_SERVICE: { description: "compose 服务名，兼容旧中台字段，部署固定更新全栈", required: false }
+      APP_DEPLOY_MODE: { description: "部署模式 web / worker / scheduled，留空沿用已发布模式", required: false }
       DEPLOY_BRANCH:   { description: "部署分支，默认触发 ref", required: false }
       PIXABAY_API_KEY: { description: "Pixabay API 密钥（敏感，seedkit 图片下载）", required: false }
       SITE_LOGO:       { description: "导航栏logo公网URL（中台自动注入）", required: false }
@@ -116,6 +116,7 @@ jobs:
           SSH_PASSPHRASE: ${{ inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
           DEPLOY_PATH: ${{ inputs.DEPLOY_PATH || secrets.DEPLOY_PATH }}
           APP_PORT: ${{ inputs.APP_PORT || secrets.APP_PORT || '8000' }}
+          APP_DEPLOY_MODE: ${{ inputs.APP_DEPLOY_MODE }}
           APP_HOST: ${{ inputs.APP_HOST || secrets.APP_HOST }}
           ACR_REGISTRY: ${{ inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
           ACR_NAMESPACE: ${{ inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
@@ -177,6 +178,10 @@ jobs:
           with open(sys.argv[1], "w", encoding="utf-8") as stream:
               stream.write(f"DEPLOY_REPOSITORY={os.environ['GITHUB_REPOSITORY']}\n")
               stream.write(f"APP_PORT={int(os.environ['APP_PORT'])}\n")
+              mode = os.environ["APP_DEPLOY_MODE"]
+              if mode not in ("", "web", "worker", "scheduled"):
+                  raise SystemExit("APP_DEPLOY_MODE 必须为 web、worker 或 scheduled")
+              stream.write(f"APP_DEPLOY_MODE={mode}\n")
               for key in ("APP_IMAGE", "ALLOWED_HOSTS", "PIXABAY_API_KEY", "SITE_LOGO"):
                   value = os.environ[key]
                   if "\n" in value or "\r" in value:
@@ -198,7 +203,8 @@ jobs:
           [[ "$remote_stage" =~ ^/tmp/scaffold-deploy\.[a-zA-Z0-9]+$ ]]
           trap 'ssh "${options[@]}" "$target" "rm -rf -- $remote_stage"; rm -rf -- "$local_stage"' EXIT
 
-          files=(deploy/docker-compose.yml deploy/apply.sh "$local_stage/compose.env")
+          files=(deploy/docker-compose.yml deploy/apply.sh deploy/runtime-common.sh
+                 deploy/product-runtime.sh "$local_stage/compose.env")
           if [[ -f "$local_stage/runtime.env" ]]; then files+=("$local_stage/runtime.env"); fi
           scp "${options[@]}" "${files[@]}" "$target:$remote_stage/"
           printf '%s\n' "$ACR_PASSWORD" | ssh "${options[@]}" "$target" \

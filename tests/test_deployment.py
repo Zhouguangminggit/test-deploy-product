@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import stat
@@ -66,18 +67,32 @@ def deploy(tmp_path):
     commands.mkdir()
     docker_log = tmp_path / "docker.log"
     # Record Compose mutations without connecting to a Docker daemon. Production uses Linux flock.
-    (commands / "docker").write_text('printf "%s\\n" "$*" >> "$DOCKER_LOG"\n')
+    (commands / "docker").write_text(
+        """printf '%s\\n' "$*" >> "$DOCKER_LOG"
+case "$*" in
+    *' config --format json')
+        if [ -n "${APP_MANAGED_ENV_FILE:-}" ]; then file=$APP_MANAGED_ENV_FILE;
+        else file=deploy/.env.runtime; fi
+        if grep -q '^REDIS_URL=.' "$file"; then redis=redis://fixture/0; else redis=; fi
+        printf '{"services":{"worker":{"environment":{"REDIS_URL":"%s"}}}}\\n' "$redis"
+        ;;
+    'ps '*) printf '%s' "${ACTIVE_SEED_JOB:-}" ;;
+esac
+"""
+    )
     (commands / "flock").write_text("exit 0\n")
     for command in commands.iterdir():
         command.write_text("#!/bin/sh\n" + command.read_text())
         command.chmod(0o755)
 
-    def run(target, port, repository="team/product", runtime=None):
+    def run(target, port, repository="team/product", runtime=None, mode="", active_job=""):
         stage = tmp_path / "stage"
         stage.mkdir(exist_ok=True)
-        (stage / "docker-compose.yml").write_text((DEPLOY / "docker-compose.yml").read_text())
+        for filename in ("docker-compose.yml", "runtime-common.sh", "product-runtime.sh"):
+            shutil.copyfile(DEPLOY / filename, stage / filename)
         (stage / "compose.env").write_text(
             f"DEPLOY_REPOSITORY={repository}\nAPP_PORT={port}\nAPP_IMAGE=example.test/app:1\n"
+            f"APP_DEPLOY_MODE={mode}\n"
         )
         runtime_path = stage / "runtime.env"
         runtime_path.unlink(missing_ok=True)
@@ -90,6 +105,8 @@ def deploy(tmp_path):
                 **os.environ,
                 "PATH": f"{commands}:{os.environ['PATH']}",
                 "DOCKER_LOG": str(docker_log),
+                "SCAFFOLD_HOST_LOCK": str(tmp_path / "host.lock"),
+                "ACTIVE_SEED_JOB": active_job,
             },
             capture_output=True,
             text=True,
@@ -99,12 +116,12 @@ def deploy(tmp_path):
     return run, docker_log
 
 
-def read_project(target):
+def read_setting(target, setting):
     for line in (target / "deploy/.env").read_text().splitlines():
         key, _, value = line.partition("=")
-        if key == "APP_COMPOSE_PROJECT":
+        if key == setting:
             return value
-    raise AssertionError("APP_COMPOSE_PROJECT is missing")
+    raise AssertionError(f"{setting} is missing")
 
 
 def test_deploy_isolates_directories_and_keeps_project_when_port_changes(deploy, tmp_path):
@@ -115,17 +132,17 @@ def test_deploy_isolates_directories_and_keeps_project_when_port_changes(deploy,
         (target / "deploy/.env.runtime").write_text("REDIS_URL=redis://legacy.test/0\n")
     result = run(first, 8101)
     assert result.returncode == 0, result.stderr
-    first_project = read_project(first)
+    first_project = read_setting(first, "APP_COMPOSE_PROJECT")
 
     result = run(second, 8102)
     assert result.returncode == 0, result.stderr
-    second_project = read_project(second)
+    second_project = read_setting(second, "APP_COMPOSE_PROJECT")
     assert second_project != first_project
 
     result = run(first, 8103)
     assert result.returncode == 0, result.stderr
-    assert read_project(first) == first_project
-    assert read_project(second) == second_project
+    assert read_setting(first, "APP_COMPOSE_PROJECT") == first_project
+    assert read_setting(second, "APP_COMPOSE_PROJECT") == second_project
     mutations = [line.split()[2] for line in docker_log.read_text().splitlines() if " up " in line]
     assert mutations == [first_project, second_project, first_project]
 
@@ -178,6 +195,153 @@ def test_deploy_installs_managed_runtime_and_preserves_legacy_file(deploy, tmp_p
     assert managed.read_text() == runtime
 
 
+def test_deploy_modes_follow_new_and_legacy_defaults_and_remove_disabled_services(deploy, tmp_path):
+    run, docker_log = deploy
+    target = tmp_path / "app"
+    runtime = "REDIS_URL=redis://legacy.test/0\n"
+    result = run(target, 8101, runtime=runtime)
+    assert result.returncode == 0, result.stderr
+    assert read_setting(target, "APP_DEPLOY_MODE") == "web"
+    assert read_setting(target, "COMPOSE_PROFILES") == ""
+
+    config = target / "deploy/.env"
+    config.write_text(config.read_text().split("APP_DEPLOY_MODE=")[0])
+    result = run(target, 8101, runtime=runtime)
+    assert result.returncode == 0, result.stderr
+    assert read_setting(target, "APP_DEPLOY_MODE") == "scheduled"
+    assert read_setting(target, "COMPOSE_PROFILES") == "worker,scheduled"
+
+    result = run(target, 8101, runtime=runtime, mode="worker")
+    assert result.returncode == 0, result.stderr
+    assert read_setting(target, "COMPOSE_PROFILES") == "worker"
+    result = run(target, 8101, runtime=runtime)
+    assert result.returncode == 0, result.stderr
+    assert read_setting(target, "APP_DEPLOY_MODE") == "worker"
+    assert docker_log.read_text().splitlines()[-2].endswith("rm --stop --force beat")
+
+    result = run(target, 8101, runtime="", mode="web")
+    assert result.returncode == 0, result.stderr
+    assert read_setting(target, "COMPOSE_PROFILES") == ""
+    assert docker_log.read_text().splitlines()[-2].endswith("rm --stop --force beat worker")
+
+
+def test_deploy_rejects_missing_redis_and_active_seed_job_before_pull(deploy, tmp_path):
+    run, docker_log = deploy
+    target = tmp_path / "app"
+    result = run(target, 8101, runtime="REDIS_URL=\n", mode="worker")
+    assert result.returncode != 0
+    assert "REDIS_URL" in result.stderr
+    result = run(target, 8101, runtime="", active_job="working")
+    assert result.returncode != 0
+    assert "请稍后重试" in result.stderr
+    assert " pull" not in docker_log.read_text()
+    assert not (target / "deploy/.env").exists()
+
+
+@pytest.fixture
+def product_runtime(tmp_path):
+    deploy_dir = tmp_path / "deploy"
+    deploy_dir.mkdir()
+    for filename in ("product-runtime.sh", "runtime-common.sh"):
+        shutil.copyfile(DEPLOY / filename, deploy_dir / filename)
+    docker = tmp_path / "docker"
+    docker.write_text(
+        """#!/bin/sh
+printf '%s\\n' "$*" >> "$DOCKER_LOG"
+case "$*" in
+    *'seedkit_job create') echo 12 ;;
+    *'seedkit_status --run-id 12'*) echo '{"run_id":12,"status":"failed"}' ;;
+    *' run -d '*) exit "${RUN_EXIT:-0}" ;;
+    'ps --filter label='*) printf '%s' "${ACTIVE_SEED_JOB:-}" ;;
+    'ps -a -q '*) if [ -n "${JOB_STATE:-}" ]; then echo job-id; fi ;;
+    inspect*) printf '%s' "$JOB_STATE" ;;
+esac
+"""
+    )
+    docker.chmod(0o755)
+    flock = tmp_path / "flock"
+    flock.write_text('#!/bin/sh\nexit "${LOCK_EXIT:-0}"\n')
+    flock.chmod(0o755)
+    docker_log = tmp_path / "docker.log"
+
+    def run(*args, mode="web", **env):
+        docker_log.write_text("")
+        (deploy_dir / ".env").write_text(
+            f"APP_COMPOSE_PROJECT=scaffold-test\nAPP_DEPLOY_MODE={mode}\n"
+        )
+        result = subprocess.run(
+            ["sh", deploy_dir / "product-runtime.sh", *args],
+            env={
+                **os.environ,
+                "PATH": f"{tmp_path}:{os.environ['PATH']}",
+                "DOCKER_LOG": str(docker_log),
+                "SCAFFOLD_HOST_LOCK": str(tmp_path / "host.lock"),
+                **env,
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result, docker_log.read_text()
+
+    return run
+
+
+def test_seed_job_detaches_with_timeout_and_worker_mode_uses_legacy_queue(product_runtime):
+    result, calls = product_runtime("seed-trigger")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"run_id": 12, "status": "pending"}
+    assert "run -d --no-deps --pull never --name scaffold-test-seedkit-12" in calls
+    assert "timeout --kill-after=5s 830s python manage.py seedkit_job execute 12" in calls
+    result, calls = product_runtime("seed-trigger", mode="worker")
+    assert result.returncode == 0, result.stderr
+    assert "seedkit_run --trigger platform" in calls
+    assert "run -d" not in calls
+
+
+def test_seed_job_launch_failure_returns_failed_status(product_runtime):
+    result, calls = product_runtime("seed-trigger", RUN_EXIT="1")
+    assert result.returncode != 0
+    assert json.loads(result.stdout)["status"] == "failed"
+    assert "seedkit_job fail 12 启动初始化容器失败" in calls
+
+
+@pytest.mark.parametrize(
+    ("state", "message"),
+    [
+        ("exited 137 true", "超出内存上限"),
+        ("exited 124 false", "超时"),
+        ("exited 1 false", "提前退出"),
+    ],
+)
+def test_seed_job_status_reconciles_stopped_container(product_runtime, state, message):
+    result, calls = product_runtime("seed-status", "12", JOB_STATE=state)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["status"] == "failed"
+    assert message in calls
+    assert "rm job-id" in calls
+
+
+@pytest.mark.parametrize("action", ["seed-trigger", "stop"])
+def test_runtime_refuses_active_init_before_changing_services(product_runtime, action):
+    result, calls = product_runtime(action, ACTIVE_SEED_JOB="another-job")
+    assert result.returncode != 0
+    assert "请稍后重试" in result.stderr
+    assert "seedkit_job create" not in calls
+    assert " down" not in calls
+
+
+def test_runtime_uses_host_lock_before_starting_or_creating_jobs(product_runtime):
+    for action in (("start", "180"), ("seed-trigger",)):
+        result, calls = product_runtime(*action, LOCK_EXIT="1")
+        assert result.returncode != 0
+        assert "请稍后重试" in result.stderr
+        assert calls == ""
+    result, calls = product_runtime("start", "180", mode="worker")
+    assert result.returncode == 0, result.stderr
+    assert "--env-file .env -f docker-compose.yml up -d --wait --wait-timeout 180" in calls
+
+
 def render_runtime(path, **values):
     return subprocess.run(
         [sys.executable, DEPLOY / "render-runtime-env.py", path],
@@ -222,6 +386,47 @@ def test_runtime_render_requires_complete_single_line_configuration(tmp_path):
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+@pytest.mark.parametrize(
+    ("profiles", "expected"),
+    [
+        ("", {"web"}),
+        ("worker", {"web", "worker"}),
+        ("worker,scheduled", {"web", "worker", "beat"}),
+    ],
+)
+def test_compose_uses_published_profiles(tmp_path, profiles, expected):
+    if (
+        not shutil.which("docker")
+        or subprocess.run(
+            ["docker", "compose", "version"], capture_output=True, check=False
+        ).returncode
+    ):
+        pytest.skip("此检查需要 Docker Compose")
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "APP_IMAGE=example.test/app:1\nAPP_COMPOSE_PROJECT=deployment-test\n"
+        f"COMPOSE_PROFILES={profiles}\n"
+    )
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            env_file,
+            "-f",
+            DEPLOY / "docker-compose.yml",
+            "config",
+            "--services",
+        ],
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert set(result.stdout.splitlines()) == expected
+
+
 def test_runtime_compose_preserves_credentials_and_overrides_legacy_url(tmp_path):
     if (
         not shutil.which("docker")
@@ -248,7 +453,21 @@ def test_runtime_compose_preserves_credentials_and_overrides_legacy_url(tmp_path
     )
     assert runtime.returncode == 0, runtime.stderr
     config = subprocess.run(
-        ["docker", "compose", "-f", compose_file, "config", "--format", "json"],
+        [
+            "docker",
+            "compose",
+            "-f",
+            compose_file,
+            "--profile",
+            "worker",
+            "--profile",
+            "scheduled",
+            "--profile",
+            "seedkit",
+            "config",
+            "--format",
+            "json",
+        ],
         env={
             "PATH": os.environ["PATH"],
             "APP_IMAGE": "example.test/app:1",
@@ -259,7 +478,7 @@ def test_runtime_compose_preserves_credentials_and_overrides_legacy_url(tmp_path
         check=True,
     )
     services = yaml.safe_load(config.stdout)["services"]
-    for name in ("web", "worker", "beat"):
+    for name in ("web", "worker", "beat", "seedkit"):
         environment = services[name]["environment"]
         # Compose escapes dollar signs in exported config so it can be loaded again.
         assert environment["MYSQL_PASSWORD"].replace("$$", "$") == password

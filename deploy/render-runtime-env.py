@@ -13,7 +13,9 @@ def write_runtime_env(path: Path) -> None:
     if not any(values.values()):
         return
 
-    required = ("SECRET_KEY", "REDIS_URL")
+    # The target resolves the effective mode (including legacy deployments)
+    # and validates the broker after Compose merges the runtime environment.
+    required = ("SECRET_KEY",)
     if not values["DATABASE_URL"]:
         required += tuple(key for key in MYSQL_KEYS if key != "MYSQL_PORT")
         values["MYSQL_PORT"] = values["MYSQL_PORT"] or "3306"
