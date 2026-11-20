@@ -13,6 +13,7 @@ RunLogger 是「可追溯」的落点：每条日志既写 SeedRunLog（后台�
 
 from __future__ import annotations
 
+from django.db import transaction
 from django.utils import timezone
 from loguru import logger
 
@@ -147,3 +148,17 @@ def execute_run_by_id(run_id: int) -> SeedRun:
     """按主键取运行记录并执行（Celery 任务入口）。"""
     run = SeedRun.objects.get(pk=run_id)
     return execute_run(run)
+
+
+@transaction.atomic
+def fail_interrupted_run(run_id: int, message: str) -> None:
+    """Finalize a stopped one-off run without overwriting a completed result."""
+    updated = SeedRun.objects.filter(
+        pk=run_id, status__in=(SeedRunStatus.PENDING, SeedRunStatus.RUNNING)
+    ).update(
+        status=SeedRunStatus.FAILED,
+        finished_at=timezone.now(),
+        error_message=message,
+    )
+    if updated:
+        RunLogger(SeedRun(pk=run_id)).error(message)

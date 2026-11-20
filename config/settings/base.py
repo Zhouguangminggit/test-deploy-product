@@ -29,7 +29,8 @@ _license_bypass_environment = os.environ.get("LICENSE_BYPASS", "false")
 env.read_env(str(BASE_DIR / ".env"))
 
 # ----------------------------- 安全与调试 -----------------------------
-SECRET_KEY = env("SECRET_KEY", default="insecure-development-key-change-me")
+# Treat the secret as a literal, including a leading dollar sign.
+SECRET_KEY = os.environ.get("SECRET_KEY", "insecure-development-key-change-me")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 

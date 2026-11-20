@@ -106,10 +106,10 @@ docker-build: ## 构建本地镜像（默认 tag 为 django-scaffold:local）
 	docker build -f deploy/Dockerfile -t $(APP_IMAGE) .
 
 docker-up: ## 启动容器编排（默认本地镜像，可用 APP_IMAGE=xxx make docker-up 指定）
-	$(COMPOSE) up -d
+	$(COMPOSE) --profile worker --profile scheduled up -d
 
 docker-down: ## 停止并移除容器编排
-	$(COMPOSE) down
+	$(COMPOSE) --profile worker --profile scheduled down
 
 # ------------------------------ 打包交付 ------------------------------
 

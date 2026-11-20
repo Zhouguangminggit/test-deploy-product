@@ -6,30 +6,35 @@ name: Deploy
 # 变量解析规则：github.event.inputs.X || secrets.X
 #
 # 中台侧配置约定：workflow_file 填 deploy.yml（与本仓库 .github/workflows/deploy.yml 文件名一致）；
-# 中台自动注入权威值 SSH_HOST=deploy_host、DEPLOY_PATH=deploy_path、APP_PORT=host_port，
-# 其余项在全局/产品变量中以同名 var_key 配置（SSH_USER/SSH_PORT/SSH_KEY/SSH_PASSPHRASE/APP_HOST/
-# ACR_REGISTRY/ACR_NAMESPACE/ACR_REPOSITORY/ACR_USERNAME/ACR_PASSWORD/COMPOSE_SERVICE）
+# 中台注入 DEPLOY_PATH 和 SSH_KEY，其余项由同名全局/产品变量提供。
 on:
   workflow_dispatch:
     inputs:
-      SSH_HOST:        { description: "服务器地址（中台自动注入 deploy_host）", required: false }
+      SSH_HOST:        { description: "服务器地址（中台部署变量）", required: false }
       SSH_USER:        { description: "服务器用户名", required: false }
       SSH_PORT:        { description: "SSH 端口，默认 22", required: false }
       SSH_KEY:         { description: "SSH 私钥（敏感）", required: false }
       SSH_PASSPHRASE:  { description: "私钥口令（敏感，可空）", required: false }
       DEPLOY_PATH:     { description: "服务器部署目录（中台自动注入 deploy_path）", required: false }
-      APP_PORT:        { description: "宿主映射端口（中台自动注入 host_port）", required: false }
+      APP_PORT:        { description: "宿主映射端口（中台产品变量）", required: false }
       APP_HOST:        { description: "访问域名/IP，未配置回退 SSH_HOST", required: false }
       ACR_REGISTRY:    { description: "ACR 仓库地址", required: false }
       ACR_NAMESPACE:   { description: "ACR 命名空间", required: false }
       ACR_REPOSITORY:  { description: "镜像仓库名，默认 django-scaffold", required: false }
       ACR_USERNAME:    { description: "ACR 账号（敏感）", required: false }
       ACR_PASSWORD:    { description: "ACR 密码（敏感）", required: false }
-      COMPOSE_SERVICE: { description: "compose 服务名，兼容旧中台字段，部署固定更新全栈", required: false }
+      APP_DEPLOY_MODE: { description: "部署模式 web / worker / scheduled，留空沿用已发布模式", required: false }
       DEPLOY_BRANCH:   { description: "部署分支，默认触发 ref", required: false }
       PIXABAY_API_KEY: { description: "Pixabay API 密钥（敏感，seedkit 图片下载）", required: false }
       SITE_LOGO:       { description: "导航栏logo公网URL（中台自动注入）", required: false }
-
+      SECRET_KEY: { description: "生产 Django 密钥（敏感）", required: false }
+      REDIS_URL: { description: "生产 Redis 连接串（敏感）", required: false }
+      DATABASE_URL: { description: "生产 MySQL 连接串（敏感，优先于 MYSQL_*）", required: false }
+      MYSQL_HOST: { description: "生产 MySQL 主机", required: false }
+      MYSQL_PORT: { description: "生产 MySQL 端口，默认 3306", required: false }
+      MYSQL_DATABASE: { description: "产品 MySQL 数据库名", required: false }
+      MYSQL_USER: { description: "产品 MySQL 用户", required: false }
+      MYSQL_PASSWORD: { description: "产品 MySQL 密码（敏感）", required: false }
 
 concurrency:
   group: production-deploy
@@ -111,6 +116,7 @@ jobs:
           SSH_PASSPHRASE: ${{ inputs.SSH_PASSPHRASE || secrets.SSH_PASSPHRASE }}
           DEPLOY_PATH: ${{ inputs.DEPLOY_PATH || secrets.DEPLOY_PATH }}
           APP_PORT: ${{ inputs.APP_PORT || secrets.APP_PORT || '8000' }}
+          APP_DEPLOY_MODE: ${{ inputs.APP_DEPLOY_MODE }}
           APP_HOST: ${{ inputs.APP_HOST || secrets.APP_HOST }}
           ACR_REGISTRY: ${{ inputs.ACR_REGISTRY || secrets.ACR_REGISTRY }}
           ACR_NAMESPACE: ${{ inputs.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
@@ -120,11 +126,25 @@ jobs:
           ACR_PASSWORD: ${{ inputs.ACR_PASSWORD || secrets.ACR_PASSWORD }}
           PIXABAY_API_KEY: ${{ inputs.PIXABAY_API_KEY || secrets.PIXABAY_API_KEY }}
           SITE_LOGO: ${{ inputs.SITE_LOGO || secrets.SITE_LOGO }}
+          SECRET_KEY: ${{ inputs.SECRET_KEY || secrets.SECRET_KEY }}
+          REDIS_URL: ${{ inputs.REDIS_URL || secrets.REDIS_URL }}
+          DATABASE_URL: ${{ inputs.DATABASE_URL || secrets.DATABASE_URL }}
+          MYSQL_HOST: ${{ inputs.MYSQL_HOST || secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ inputs.MYSQL_PORT || secrets.MYSQL_PORT }}
+          MYSQL_DATABASE: ${{ inputs.MYSQL_DATABASE || secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ inputs.MYSQL_USER || secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ inputs.MYSQL_PASSWORD || secrets.MYSQL_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          for value in "$ACR_PASSWORD" "$PIXABAY_API_KEY" "$SSH_PASSPHRASE"; do
-            if [[ -n "$value" ]]; then echo "::add-mask::$value"; fi
+          for value in "$ACR_PASSWORD" "$PIXABAY_API_KEY" "$SSH_PASSPHRASE" \
+                       "$SECRET_KEY" "$REDIS_URL" "$DATABASE_URL" "$MYSQL_PASSWORD"; do
+            if [[ -n "$value" ]]; then
+              value=${value//%/%25}
+              value=${value//$'\r'/%0D}
+              value=${value//$'\n'/%0A}
+              echo "::add-mask::$value"
+            fi
           done
 
           SSH_USER=$(printf '%s' "$SSH_USER" | tr -d '[:space:]')
@@ -143,6 +163,7 @@ jobs:
           umask 077
           local_stage=$(mktemp -d)
           trap 'rm -rf -- "$local_stage"' EXIT
+          python3 deploy/render-runtime-env.py "$local_stage/runtime.env"
           printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$local_stage/key"
           if [[ -n "$SSH_PASSPHRASE" ]]; then
             ssh-keygen -p -P "$SSH_PASSPHRASE" -N "" -f "$local_stage/key" >/dev/null
@@ -157,6 +178,10 @@ jobs:
           with open(sys.argv[1], "w", encoding="utf-8") as stream:
               stream.write(f"DEPLOY_REPOSITORY={os.environ['GITHUB_REPOSITORY']}\n")
               stream.write(f"APP_PORT={int(os.environ['APP_PORT'])}\n")
+              mode = os.environ["APP_DEPLOY_MODE"]
+              if mode not in ("", "web", "worker", "scheduled"):
+                  raise SystemExit("APP_DEPLOY_MODE 必须为 web、worker 或 scheduled")
+              stream.write(f"APP_DEPLOY_MODE={mode}\n")
               for key in ("APP_IMAGE", "ALLOWED_HOSTS", "PIXABAY_API_KEY", "SITE_LOGO"):
                   value = os.environ[key]
                   if "\n" in value or "\r" in value:
@@ -178,7 +203,10 @@ jobs:
           [[ "$remote_stage" =~ ^/tmp/scaffold-deploy\.[a-zA-Z0-9]+$ ]]
           trap 'ssh "${options[@]}" "$target" "rm -rf -- $remote_stage"; rm -rf -- "$local_stage"' EXIT
 
-          scp "${options[@]}" deploy/docker-compose.yml deploy/apply.sh "$local_stage/compose.env" "$target:$remote_stage/"
+          files=(deploy/docker-compose.yml deploy/apply.sh deploy/runtime-common.sh
+                 deploy/product-runtime.sh "$local_stage/compose.env")
+          if [[ -f "$local_stage/runtime.env" ]]; then files+=("$local_stage/runtime.env"); fi
+          scp "${options[@]}" "${files[@]}" "$target:$remote_stage/"
           printf '%s\n' "$ACR_PASSWORD" | ssh "${options[@]}" "$target" \
             "docker login $(quote "$ACR_REGISTRY") -u $(quote "$ACR_USERNAME") --password-stdin"
           ssh "${options[@]}" "$target" "sh $remote_stage/apply.sh $remote_stage $remote_path"

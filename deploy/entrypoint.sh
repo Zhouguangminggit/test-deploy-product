@@ -4,14 +4,18 @@ set -e
 
 # 使用 SQLite 或无需等待数据库时，设置 SKIP_DB_WAIT=1 跳过等待
 if [ "${SKIP_DB_WAIT:-0}" != "1" ]; then
-    echo "==> 等待数据库 ${MYSQL_HOST:-db}:${MYSQL_PORT:-3306} 就绪..."
+    echo "==> 等待数据库就绪..."
     python - <<'PY'
-import os
 import socket
 import time
 
-host = os.environ.get("MYSQL_HOST", "db")
-port = int(os.environ.get("MYSQL_PORT", "3306"))
+from django.conf import settings
+
+database = settings.DATABASES["default"]
+host = database["HOST"]
+if not host or host.startswith("/"):
+    raise SystemExit(0)
+port = int(database["PORT"] or 3306)
 for _ in range(30):
     try:
         socket.create_connection((host, port), timeout=2).close()
@@ -35,7 +39,7 @@ python manage.py collectstatic --noinput --ignore "css/base.css"
 echo "==> 启动 Gunicorn..."
 exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \
-    --workers "${GUNICORN_WORKERS:-3}" \
-    --logger-class config.gunicorn_logging.AccessLogger \
+    --workers "${GUNICORN_WORKERS:-1}" \
+    --threads "${GUNICORN_THREADS:-2}" \
     --access-logfile - \
     --error-logfile -
